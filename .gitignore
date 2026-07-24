@@ -1,0 +1,44 @@
+# 编译文件
+build/
+Debug/
+Release/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+
+# 文件夹
+硬件/
+.vscode/
+.agents/
+
+# Keil
+Objects/
+Listings/
+*.axf
+*.uvguix.*
+
+# STM32CubeMX生成缓存
+*.launch
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.bak
+
+# Python缓存
+__pycache__/
+*.pyc
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 压缩文件
+*.rar
+*.zip

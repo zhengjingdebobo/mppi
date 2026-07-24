@@ -1,0 +1,1123 @@
+#include "chassis.h"
+#include "nx16.h" // 上位机控制结构与协议常量
+#include "pid.h"
+#include <math.h>
+#include <string.h>
+#include "hwt9053_can.h"
+#include "odom_xdrive.h"
+#include "motor_def.h"
+#include "vesc_motor.h"
+#include "path_tracker.h"
+#include "drv_dwt.h"
+#include <stdbool.h>  
+#ifndef DEG_TO_RAD
+#define DEG_TO_RAD 0.0174532925f
+#endif
+
+#ifndef RAD_TO_DEG
+#define RAD_TO_DEG 57.2957795131f // 180 / pi
+#endif
+
+#define MOVE_MAX_SPEED_MPS         0.22f
+#define MOVE_MIN_SPEED_MPS         0.05f
+#define MOVE_MAX_ACCEL_MPS2        0.35f
+#define MOVE_MAX_DECEL_MPS2        0.45f
+#define MOVE_LATERAL_KP_MPS        1.60f
+#define MOVE_LATERAL_KD_MPS        0.18f
+#define MOVE_LATERAL_MAX_SPEED_MPS 0.08f
+#define MOVE_FINISH_THRESH_M       0.015f
+#define MOVE_FINISH_LATERAL_M      0.025f
+#define MOVE_FINISH_TARGET_RADIUS_M 0.020f
+#define MOVE_FINISH_YAW_DEG        2.0f
+#define MOVE_FINISH_SPEED_MPS      0.025f
+#define MOVE_FINISH_HOLD_TICK      6u
+#define MOVE_FEEDBACK_DT_FALLBACK_S 0.01f
+#define MOVE_VEL_FILTER_ALPHA      0.25f
+#define MOVE_TASK_TIMEOUT_TICK     30000
+#define MOVE_FUSED_POS_WEIGHT      0.25f
+#define MOVE_FUSED_LAT_WEIGHT      0.35f
+#define MOVE_SLIP_ENC_SPEED_MPS    0.10f
+#define MOVE_SLIP_IMU_SPEED_MPS    0.025f
+#define MOVE_SLIP_ACCEL_MPS2       0.12f
+#define MOVE_SLIP_LIMIT_SPEED_MPS  0.10f
+#define MOVE_SLIP_HOLD_TICK        8u
+#define ROTATE_CONTROL_MAX         250.0f
+#define ROTATE_FINISH_YAW_DEG      1.0f
+#define ROTATE_FINISH_RATE_DPS     3.0f
+#define ROTATE_FINISH_HOLD_TICK    150u
+#define RC_MOVE_DEADBAND           35
+#define RC_YAW_DEADBAND            80
+#define RC_API_OVERRIDE_MOVE_DEADBAND 100
+#define RC_API_OVERRIDE_YAW_DEADBAND  120
+#define CHASSIS_WZ_DEADBAND        8.0f
+
+/* 里程计实例与调试数据 */
+
+OdomXDrive_t g_odom;
+Chassis_Debug_Data_t g_dbg; // 调试使用
+// 任务执行过程中需要跨周期保存的状态量
+static float target_distance = 0.0f;
+static float target_forward_distance = 0.0f;
+static float target_lateral_distance = 0.0f;
+static float target_yaw_rad = 0.0f;
+static float move_start_x = 0.0f;
+static float move_start_y = 0.0f;
+static float move_start_fused_x = 0.0f;
+static float move_start_fused_y = 0.0f;
+static float move_start_yaw_rad = 0.0f;
+static float move_start_yaw_deg = 0.0f;
+static float move_start_encoder_x = 0.0f;
+static float move_start_encoder_y = 0.0f;
+static float move_start_imu_x = 0.0f;
+static float move_start_imu_y = 0.0f;
+static float move_target_x = 0.0f;
+static float move_target_y = 0.0f;
+static float move_prev_control_traveled = 0.0f;
+static float move_prev_control_lateral = 0.0f;
+static uint32_t move_last_tick_ms = 0u;
+static float move_filtered_forward_vel = 0.0f;
+static float move_filtered_lateral_vel = 0.0f;
+static float move_cmd_forward_mps = 0.0f;
+static float move_cmd_lateral_mps = 0.0f;
+static uint16_t move_finish_hold_count = 0u;
+static uint8_t move_finish_latched = 0u;
+static uint16_t move_slip_hold_count = 0u;
+static uint16_t rotate_finish_hold_count = 0u;
+static int8_t move_dir = 1;
+static uint8_t move_direct_wheel_mode = 0u;
+typedef enum
+{
+    CHASSIS_API_MODE_NONE = 0u,
+    CHASSIS_API_MODE_POLAR_VELOCITY,
+    CHASSIS_API_MODE_POLAR_DISTANCE,
+    CHASSIS_API_MODE_ROTATE_TASK,
+} ChassisApiMode_e;
+
+static ChassisApiMode_e chassis_api_mode = CHASSIS_API_MODE_NONE;
+static float chassis_api_heading_deg = 0.0f;
+static float chassis_api_speed_mps = 0.0f;
+int16_t Chassis_Follow_Control(float target, float feedback, One_PID_Para_t *pid);
+                          
+void FinishTask(uint8_t status);
+void TaskInit(void);
+static void IMU_data_send(uint32_t now_tick, uint64_t now_us);
+static void App_TaskLoop(void);
+static void App_InitOdomOnce(void);
+static void Chassis_StartMoveTask(int8_t direction);
+static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m);
+static void Chassis_UpdateMoveTask(void);
+static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float yaw_cmd);
+
+static uint8_t ChassisGetHeading(HWT9053Heading_t *heading)
+{
+    return HWT9053CAN_GetHeading(heading);
+}
+
+static uint8_t ChassisClosedLoopFeedbackReady(void)
+{
+    return (HWT9053CAN_IsOnline() &&
+            VESCMotorAllFeedbackOnline() &&
+            g_odom.pose.valid) ? 1u : 0u;
+}
+
+static float ChassisNormalizeAngleDeg(float angle_deg)
+{
+    while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+    while (angle_deg < 0.0f) angle_deg += 360.0f;
+    return angle_deg;
+}
+
+static uint8_t ChassisApiOverrideIsActive(void)
+{
+    return (chassis_api_mode != CHASSIS_API_MODE_NONE) ? 1u : 0u;
+}
+
+static uint8_t ChassisSerialControlIsAllowed(void)
+{
+#if CHASSIS_SERIAL_CONTROL_REQUIRE_RC
+    return RemoteControlIsOnline() ? 1u : 0u;
+#else
+    return 1u;
+#endif
+}
+
+/* 清除 API 注入的控制状态，恢复到底盘常规控制路径。 */
+void ChassisClearApiCommand(void)
+{
+    chassis_api_mode = CHASSIS_API_MODE_NONE;
+    chassis_api_heading_deg = 0.0f;
+    chassis_api_speed_mps = 0.0f;
+    move_direct_wheel_mode = 0u;
+
+    if (nx16_ctrl.InTask == 0u)
+    {
+        rc_ctrl.chassis_vx = 0.0f;
+        rc_ctrl.chassis_vy = 0.0f;
+        rc_ctrl.chassis_wz = 0.0f;
+        rc_ctrl.vt_lf = 0.0f;
+        rc_ctrl.vt_rf = 0.0f;
+        rc_ctrl.vt_lb = 0.0f;
+        rc_ctrl.vt_rb = 0.0f;
+        g_dbg.cmd_vx = 0.0f;
+        g_dbg.cmd_vy = 0.0f;
+        g_dbg.cmd_wz = 0.0f;
+    }
+}
+
+/* 按“方向角 + 速度”方式持续控制底盘平移。 */
+ChassisApiResult_e ChassisMoveByAngleAndSpeed(float angle_deg, float speed_mps)
+{
+    HWT9053Heading_t heading;
+
+    if (!ChassisSerialControlIsAllowed())
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    if (angle_deg != angle_deg || speed_mps != speed_mps)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+
+    if (fabsf(speed_mps) > MOVE_MAX_SPEED_MPS)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+
+    if (nx16_ctrl.InTask != 0u)
+    {
+        return CHASSIS_API_BUSY;
+    }
+
+    if (fabsf(speed_mps) < 1.0e-4f)
+    {
+        ChassisClearApiCommand();
+        nx16_ctrl.Status = STATUS_IDLE;
+        return CHASSIS_API_OK;
+    }
+
+    chassis_api_heading_deg = ChassisNormalizeAngleDeg(angle_deg);
+    chassis_api_speed_mps = speed_mps;
+    chassis_api_mode = CHASSIS_API_MODE_POLAR_VELOCITY;
+
+    nx16_ctrl.InTask = 0u;
+    nx16_ctrl.RxFlag = 0u;
+    nx16_ctrl.Status = STATUS_EXECUTING;
+    if (ChassisGetHeading(&heading))
+    {
+        rc_ctrl.target_angle_class = heading.yaw_total_deg;
+    }
+    return CHASSIS_API_OK;
+}
+
+/* 按“方向角 + 距离”方式启动一次任意角度定距离位移任务。 */
+ChassisApiResult_e ChassisMoveByAngleAndDistance(float angle_deg, float distance_m)
+{
+    if (!ChassisSerialControlIsAllowed())
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    if (angle_deg != angle_deg || distance_m != distance_m)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+
+    if (nx16_ctrl.InTask != 0u)
+    {
+        return CHASSIS_API_BUSY;
+    }
+
+    if (fabsf(distance_m) < 1.0e-4f)
+    {
+        ChassisClearApiCommand();
+        nx16_ctrl.Status = STATUS_IDLE;
+        return CHASSIS_API_OK;
+    }
+
+    if (!ChassisClosedLoopFeedbackReady())
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    ChassisClearApiCommand();
+    chassis_api_mode = CHASSIS_API_MODE_POLAR_DISTANCE;
+    Chassis_StartPolarMoveTask(angle_deg, distance_m);
+    nx16_ctrl.InTask = (distance_m >= 0.0f) ? 1u : 2u;
+    nx16_ctrl.RxFlag = 0u;
+    nx16_ctrl.Status = STATUS_EXECUTING;
+    nx16_ctrl.LastCommandID = (distance_m >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
+    return CHASSIS_API_OK;
+}
+
+/* 按给定方向和角度启动原地旋转任务。 */
+ChassisApiResult_e ChassisRotateInPlace(ChassisRotateDir_e dir, float angle_deg)
+{
+    float signed_angle_deg;
+    HWT9053Heading_t heading;
+
+    if (!ChassisSerialControlIsAllowed())
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    if (angle_deg != angle_deg || angle_deg <= 0.0f || angle_deg > 360.0f)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+
+    if (nx16_ctrl.InTask != 0u)
+    {
+        return CHASSIS_API_BUSY;
+    }
+
+    if (!ChassisClosedLoopFeedbackReady() || !ChassisGetHeading(&heading))
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    signed_angle_deg = (dir == CHASSIS_ROTATE_LEFT) ? angle_deg : -angle_deg;
+
+    ChassisClearApiCommand();
+    chassis_api_mode = CHASSIS_API_MODE_ROTATE_TASK;
+
+    nx16_ctrl.CommandID = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+    nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
+    nx16_ctrl.CoreInstruction.YawAngle = signed_angle_deg;
+    nx16_ctrl.TaskTime = 30000;
+    nx16_ctrl.RxFlag = 0u;
+    nx16_ctrl.InTask = 3u;
+    nx16_ctrl.Status = STATUS_EXECUTING;
+    rc_ctrl.chassis_k = 8.05f;
+    Chassis_follow_pid.shell.shell_i_part = 0.0f;
+    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
+    Chassis_follow_pid.shell.shell_out = 0.0f;
+    rotate_finish_hold_count = 0u;
+    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+    rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class + signed_angle_deg;
+    return CHASSIS_API_OK;
+}
+
+void ChassisInit()
+{
+    // 初始化里程计和任务状态
+	App_InitOdomOnce();
+    TaskInit();
+
+}
+
+
+static volatile int32_t current_idx = 0;
+
+static void OmniCalculate()
+{
+    int16_t rc_vy_raw = (int16_t)rc_ctrl.rc_channels[0] - 1024;
+    int16_t rc_vx_raw = (int16_t)rc_ctrl.rc_channels[1] - 1024;
+    int16_t rc_yaw_raw = (int16_t)rc_ctrl.rc_channels[3] - 1024;
+    uint8_t rc_online = RemoteControlIsOnline() ? 1u : 0u;
+    uint8_t api_override_active = ChassisApiOverrideIsActive();
+    uint8_t serial_control_allowed = ChassisSerialControlIsAllowed();
+    uint8_t rc_manual_enabled = (rc_online &&
+                                 rc_ctrl.rc_channels[2] >= 300u) ? 1u : 0u;
+    uint8_t rc_override_active = (rc_manual_enabled &&
+                                  (rc_vy_raw > RC_API_OVERRIDE_MOVE_DEADBAND ||
+                                   rc_vy_raw < -RC_API_OVERRIDE_MOVE_DEADBAND ||
+                                   rc_vx_raw > RC_API_OVERRIDE_MOVE_DEADBAND ||
+                                   rc_vx_raw < -RC_API_OVERRIDE_MOVE_DEADBAND ||
+                                   rc_yaw_raw > RC_API_OVERRIDE_YAW_DEADBAND ||
+                                   rc_yaw_raw < -RC_API_OVERRIDE_YAW_DEADBAND)) ? 1u : 0u;
+    HWT9053Heading_t heading;
+
+    // 默认要求遥控器在线；运行中掉线时立即撤销串口控制并停车。
+    if ((!rc_manual_enabled && !api_override_active) ||
+        (api_override_active && !serial_control_allowed))
+    {
+        if (api_override_active && !serial_control_allowed)
+        {
+            ChassisClearApiCommand();
+        }
+        move_direct_wheel_mode = 0u;
+        nx16_ctrl.InTask = 0;
+        nx16_ctrl.RxFlag = 0;
+        nx16_ctrl.Status = STATUS_IDLE;
+        rc_ctrl.chassis_vx = 0.0f;
+        rc_ctrl.chassis_vy = 0.0f;
+        rc_ctrl.chassis_wz = 0.0f;
+        rc_ctrl.vt_lf = 0.0f;
+        rc_ctrl.vt_rf = 0.0f;
+        rc_ctrl.vt_lb = 0.0f;
+        rc_ctrl.vt_rb = 0.0f;
+        rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+    }
+    // 遥控器始终最高优先级：有效运动输入立即撤销串口/API 控制。
+    else if (rc_override_active)
+    {
+        ChassisClearApiCommand();
+        move_direct_wheel_mode = 0u;
+        nx16_ctrl.InTask = 0;
+        nx16_ctrl.RxFlag = 0;
+        nx16_ctrl.Status = STATUS_IDLE;
+    }
+
+    // 只有在非任务模式下，遥控摇杆才直接生成底盘速度指令
+    if(nx16_ctrl.InTask == 0)
+    {
+        if (rc_vy_raw > RC_MOVE_DEADBAND || rc_vy_raw < -RC_MOVE_DEADBAND)
+            rc_ctrl.chassis_vx = (float)rc_vy_raw * 1.15f;
+        else rc_ctrl.chassis_vx = 0.0f;
+
+        if (rc_vx_raw > RC_MOVE_DEADBAND || rc_vx_raw < -RC_MOVE_DEADBAND)
+            rc_ctrl.chassis_vy = (float)rc_vx_raw * 1.15f;
+        else rc_ctrl.chassis_vy = 0.0f;
+       
+        if (rc_ctrl.rc_channels[2] - 242 > 20 )
+            rc_ctrl.chassis_k = (float)(((rc_ctrl.rc_channels[2] - 242)/256)+1) * 1.15f;
+        else rc_ctrl.chassis_k = 1.0f;
+    }
+
+    if (ChassisGetHeading(&heading))
+    {
+        rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+    }
+
+    /* 非任务模式下由 yaw 摇杆直接控制旋转。
+     * 闭环任务执行时必须保留任务设置的目标角，不能在摇杆居中时覆盖它。
+     */
+    if (nx16_ctrl.InTask == 0u)
+    {
+        if (rc_yaw_raw > RC_YAW_DEADBAND || rc_yaw_raw < -RC_YAW_DEADBAND)
+        {
+            rc_ctrl.chassis_wz = -(float)rc_yaw_raw * 0.8f;
+        }
+        else
+        {
+            rc_ctrl.chassis_wz = 0.0f;
+            rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+        }
+    }
+    
+    // 上位机新指令只在这里做一次性接管，后续执行由 InTask 状态机维持
+    if(nx16_ctrl.RxFlag == 1) 
+    {
+        if (nx16_ctrl.CommandID == CMD_STOP) 
+        {
+            rc_ctrl.chassis_vx = 0.0f; 
+            rc_ctrl.chassis_vy = 0.0f; 
+            rc_ctrl.chassis_wz = 0.0f;
+            rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+            rc_ctrl.vt_lf = 0.0f; rc_ctrl.vt_rf = 0.0f; rc_ctrl.vt_lb = 0.0f; rc_ctrl.vt_rb = 0.0f;
+            nx16_ctrl.InTask = 0;
+            nx16_ctrl.Status = STATUS_IDLE;
+            FinishTask(STATUS_CMD_SUCCESS);
+        }
+        else if (nx16_ctrl.InTask == 0) 
+        {
+            if(nx16_ctrl.CommandID == CMD_MOVE_FORWARD)
+            {
+                if (!ChassisClosedLoopFeedbackReady())
+                {
+                    FinishTask(STATUS_CMD_FAILED);
+                }
+                else
+                {
+                    Chassis_StartMoveTask(1);
+                    nx16_ctrl.InTask = 1;
+                    nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
+                }
+            }
+            else if(nx16_ctrl.CommandID == CMD_MOVE_BACKWARD)
+            {
+                if (!ChassisClosedLoopFeedbackReady())
+                {
+                    FinishTask(STATUS_CMD_FAILED);
+                }
+                else
+                {
+                    Chassis_StartMoveTask(-1);
+                    nx16_ctrl.InTask = 2;
+                    nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
+                }
+            }   
+            else if(nx16_ctrl.CommandID == CMD_ROTATE_CCW || nx16_ctrl.CommandID == CMD_ROTATE_CW) 
+            {
+                if (!ChassisClosedLoopFeedbackReady() || !ChassisGetHeading(&heading))
+                {
+                    FinishTask(STATUS_CMD_FAILED);
+                }
+                else
+                {
+                    nx16_ctrl.TaskTime = 30000;
+                    rc_ctrl.chassis_k = 8.05f;
+                    Chassis_follow_pid.shell.shell_i_part = 0.0f;
+                    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
+                    Chassis_follow_pid.shell.shell_out = 0.0f;
+                    rotate_finish_hold_count = 0u;
+                    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+                    rc_ctrl.target_angle_class = heading.yaw_total_deg + nx16_ctrl.CoreInstruction.YawAngle;
+                    nx16_ctrl.InTask = 3;
+                    nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
+                }
+            }
+            else if(nx16_ctrl.CommandID == CMD_PATH_TRACKING)
+            {
+                nx16_ctrl.TaskTime = 30000;
+                rc_ctrl.chassis_k = 8.0f;
+                ResetPathIndex();
+                nx16_ctrl.InTask = 4;
+                nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
+            }
+        }
+        
+        nx16_ctrl.RxFlag = 0;
+        if(nx16_ctrl.CommandID != CMD_STOP) nx16_ctrl.Status = STATUS_EXECUTING;
+    }
+    
+    if (nx16_ctrl.InTask != 0 && nx16_ctrl.RxFlag == 0)
+    {
+        if (nx16_ctrl.TaskTime > 0) nx16_ctrl.TaskTime--;
+
+        switch (nx16_ctrl.InTask)
+        {
+            case 1:
+            case 2:
+                if (!ChassisClosedLoopFeedbackReady()) FinishTask(STATUS_CMD_FAILED);
+                else if (nx16_ctrl.TaskTime < 300) FinishTask(STATUS_CMD_FAILED);
+                else Chassis_UpdateMoveTask();
+                break;
+            case 3:
+                if (!ChassisClosedLoopFeedbackReady() || !ChassisGetHeading(&heading))
+                {
+                    FinishTask(STATUS_CMD_FAILED);
+                }
+                else if (nx16_ctrl.TaskTime < 300) FinishTask(STATUS_CMD_FAILED);
+                else {
+                    float angle_error = fabsf(rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class);
+                    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+                    angle_error = fabsf(rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class);
+                    if (angle_error <= ROTATE_FINISH_YAW_DEG &&
+                        fabsf(heading.gyro_z_dps) <= ROTATE_FINISH_RATE_DPS)
+                    {
+                        rc_ctrl.chassis_wz = 0.0f;
+                        if (rotate_finish_hold_count < ROTATE_FINISH_HOLD_TICK) rotate_finish_hold_count++;
+                        if (rotate_finish_hold_count >= ROTATE_FINISH_HOLD_TICK)
+                        {
+                            FinishTask(STATUS_CMD_SUCCESS);
+                        }
+                    }
+                    else
+                    {
+                        float rotate_output;
+                        rotate_finish_hold_count = 0u;
+                        rotate_output = Chassis_Follow_Control(rc_ctrl.target_angle_class,
+                                                              rc_ctrl.feedback_angle_class,
+                                                              &Chassis_follow_pid);
+                        if (rotate_output > ROTATE_CONTROL_MAX) rotate_output = ROTATE_CONTROL_MAX;
+                        if (rotate_output < -ROTATE_CONTROL_MAX) rotate_output = -ROTATE_CONTROL_MAX;
+                        rc_ctrl.chassis_wz = rotate_output;
+                    }
+                }
+                break;
+            case 4:
+                {
+                    float current_yaw_rad = nx16_ctrl.current_yaw * DEG_TO_RAD;
+                    TrajectoryPoint_t *use_points;
+                    size_t use_len;
+                    Nx16_TrySwitchActive_DefaultSafe();
+                    Nx16_GetDynamicPath((void**)&use_points, &use_len);
+                    
+                    Nx16SwitchMode_t Current_Switch_Mode = GetNx16_Switch_mode();
+                    if (!(Current_Switch_Mode == NX16_SWITCH_INVALID))
+                    {
+                        bool safe_to_switch = true;
+                        if(Nx16_TrySwitchActive(safe_to_switch))
+                        {
+                            ResetPathIndex();
+                            Nx16_GetDynamicPath((void**)&use_points, &use_len);
+                        }
+                    }
+                    
+                    if (use_len < 2 || use_points == NULL)
+                    {
+                        FinishTask(STATUS_CMD_FAILED);
+                        break;
+                    }
+
+                    ControlCmd_t cmd_result = OmniControl(nx16_ctrl.current_x, nx16_ctrl.current_y, current_yaw_rad,
+                                                          use_points, use_len);
+
+                    rc_ctrl.chassis_vx = cmd_result.vx_cmd;
+                    rc_ctrl.chassis_vy = cmd_result.vy_cmd;
+                    rc_ctrl.chassis_wz = cmd_result.wz_cmd;
+
+                    current_idx = GetCurrentPathIndex();
+                    g_dbg.curr_x = nx16_ctrl.current_x;
+                    g_dbg.curr_y = nx16_ctrl.current_y;
+                    g_dbg.curr_yaw = nx16_ctrl.current_yaw * DEG_TO_RAD;
+                    if (current_idx < (int32_t)use_len) {
+                        g_dbg.target_x = use_points[current_idx].x;
+                        g_dbg.target_y = use_points[current_idx].y;
+                    }
+                    g_dbg.cmd_vx = rc_ctrl.chassis_vx / 1000.0f;
+                    g_dbg.cmd_vy = rc_ctrl.chassis_vy / 1000.0f;
+                    g_dbg.cmd_wz = rc_ctrl.chassis_wz * RAD_TO_DEG / 1000.0f;
+                    
+                    bool stop = (fabsf(cmd_result.vx_cmd) < 30.0f &&
+                        fabsf(cmd_result.vy_cmd) < 30.0f &&
+                        fabsf(cmd_result.wz_cmd) < 30.0f);
+                    float end_dx = use_points[use_len - 1].x - nx16_ctrl.current_x;
+                    float end_dy = use_points[use_len - 1].y - nx16_ctrl.current_y;
+                    float end_dist = sqrtf(end_dx * end_dx + end_dy * end_dy);
+                    if (end_dist < 0.03f && stop && current_idx == use_len - 1) FinishTask(STATUS_CMD_SUCCESS);
+                }
+                break;
+            default: FinishTask(STATUS_CMD_FAILED); break;
+        }
+    }
+   
+    if(!RemoteControlIsOnline() && !ChassisApiOverrideIsActive())
+    {
+        rc_ctrl.chassis_vx = 0.0f;
+        rc_ctrl.chassis_vy = 0.0f;
+        rc_ctrl.chassis_wz = 0.0f;
+        rc_ctrl.vt_lf = 0.0f;
+        rc_ctrl.vt_rf = 0.0f;
+        rc_ctrl.vt_lb = 0.0f;
+        rc_ctrl.vt_rb = 0.0f;
+        return;
+    }
+
+    if (nx16_ctrl.InTask == 0 && fabsf(rc_ctrl.chassis_wz) < CHASSIS_WZ_DEADBAND)
+    {
+        rc_ctrl.chassis_wz = 0.0f;
+    }
+
+    if (chassis_api_mode == CHASSIS_API_MODE_POLAR_VELOCITY && nx16_ctrl.InTask == 0)
+    {
+        float heading_rad = chassis_api_heading_deg * DEG_TO_RAD;
+        float forward_mps = cosf(heading_rad) * chassis_api_speed_mps;
+        float right_mps = -sinf(heading_rad) * chassis_api_speed_mps;
+
+        rc_ctrl.chassis_vx = forward_mps * 1000.0f;
+        rc_ctrl.chassis_vy = right_mps * 1000.0f;
+        rc_ctrl.chassis_wz = 0.0f;
+        rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+        move_direct_wheel_mode = 1u;
+        Chassis_SetMoveWheelSpeed(forward_mps, right_mps, 0.0f);
+        g_dbg.cmd_vx = rc_ctrl.chassis_vx / 1000.0f;
+        g_dbg.cmd_vy = rc_ctrl.chassis_vy / 1000.0f;
+        g_dbg.cmd_wz = rc_ctrl.chassis_wz;
+        g_dbg.lf_ref = rc_ctrl.vt_lf;
+        g_dbg.rf_ref = rc_ctrl.vt_rf;
+        g_dbg.lb_ref = rc_ctrl.vt_lb;
+        g_dbg.rb_ref = rc_ctrl.vt_rb;
+        return;
+    }
+
+    // 定距任务会直接生成四轮目标，此时跳过通用运动学解算
+    if (move_direct_wheel_mode)
+    {
+        g_dbg.lf_ref = rc_ctrl.vt_lf;
+        g_dbg.rf_ref = rc_ctrl.vt_rf;
+        g_dbg.lb_ref = rc_ctrl.vt_lb;
+        g_dbg.rb_ref = rc_ctrl.vt_rb;
+        return;
+    }
+
+    rc_ctrl.vt_lf = rc_ctrl.chassis_k * (-rc_ctrl.chassis_vx * 0.707f - rc_ctrl.chassis_vy * 0.707f + rc_ctrl.chassis_wz) * 1.06f;
+    rc_ctrl.vt_rf = rc_ctrl.chassis_k * ( rc_ctrl.chassis_vx * 0.707f - rc_ctrl.chassis_vy * 0.707f - rc_ctrl.chassis_wz) * 1.06f;
+    rc_ctrl.vt_lb = rc_ctrl.chassis_k * (-rc_ctrl.chassis_vx * 0.707f + rc_ctrl.chassis_vy * 0.707f - rc_ctrl.chassis_wz) * 1.06f;
+    rc_ctrl.vt_rb = rc_ctrl.chassis_k * ( rc_ctrl.chassis_vx * 0.707f + rc_ctrl.chassis_vy * 0.707f + rc_ctrl.chassis_wz) * 1.06f;
+    g_dbg.lf_ref = rc_ctrl.vt_lf;
+    g_dbg.rf_ref = rc_ctrl.vt_rf;
+    g_dbg.lb_ref = rc_ctrl.vt_lb;
+    g_dbg.rb_ref = rc_ctrl.vt_rb;
+}
+static void LimitChassisOutput()
+{
+    // 底盘层只输出四个逻辑轮速，ID 映射和方向修正在 VESC 层处理
+    VESCMotorSetFourRPM((int32_t)rc_ctrl.vt_lf,
+                        (int32_t)rc_ctrl.vt_rf,
+                        (int32_t)rc_ctrl.vt_rb,
+                        (int32_t)rc_ctrl.vt_lb);
+
+    g_dbg.lf_fdb = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LF);
+    g_dbg.rf_fdb = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RF);
+    g_dbg.lb_fdb = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LB);
+    g_dbg.rb_fdb = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RB);
+}
+
+static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
+{
+    static uint32_t status_send_tick = 0u;
+    static uint32_t vesc_send_tick = 0u;
+    static uint64_t imu_send_us = 0u;
+
+    /* USART1当前为9600 baud（8N1约960 byte/s）。
+     * STATUS 5Hz + VESC 2Hz + IMU 1Hz约752 byte/s。
+     */
+    if (now_tick - status_send_tick >= 200u)
+    {
+        status_send_tick = now_tick;
+        SendStatusAndOdometryToAgent(&AGENT_UART_HANDLE);
+    }
+
+    if (now_tick - vesc_send_tick >= 500u)
+    {
+        vesc_send_tick = now_tick;
+        SendVESCFeedbackToAgent(&AGENT_UART_HANDLE);
+    }
+
+    // 控制内部仍读取200Hz IMU；这里只把上位机遥测限制为1Hz。
+    if (imu_send_us == 0u)
+    {
+        imu_send_us = now_us;
+        SendIMUDataToAgent(&AGENT_UART_HANDLE);
+    }
+    else if ((now_us - imu_send_us) >= 1000000u)
+    {
+        do
+        {
+            imu_send_us += 1000000u;
+        } while ((now_us - imu_send_us) >= 1000000u);
+
+        SendIMUDataToAgent(&AGENT_UART_HANDLE);
+    }
+}
+
+// ===============================ChassisTask====================================
+void ChassisTask()
+{
+
+    if ((!RemoteControlIsOnline() || rc_ctrl.rc_channels[2] < 300) && !ChassisApiOverrideIsActive())
+    {
+        VESCMotorStopAll();
+    }
+
+    // 先刷新位姿，再做控制解算，避免本周期使用过期状态
+    App_TaskLoop();
+
+    OmniCalculate();
+    LimitChassisOutput();
+    
+    // 上位机回传和控制解算解耦，避免串口发送阻塞主控制路径
+    uint32_t now_tick = xTaskGetTickCount();
+    uint64_t now_us = DWT_GetTimeline_us();
+
+    IMU_data_send(now_tick, now_us);
+
+}
+
+static float MoveTaskClamp(float value, float min_value, float max_value)
+{
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
+}
+
+static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float yaw_cmd)
+{
+    float speed_mps_per_erpm = VESC_WHEEL_MPS_PER_ERPM;
+    float inv_sqrt2 = g_odom.cfg.inv_sqrt2;
+    float forward_raw;
+    float right_raw;
+    float yaw_raw;
+
+    if (speed_mps_per_erpm <= 1.0e-8f) speed_mps_per_erpm = 4.24e-5f;
+    if (inv_sqrt2 <= 0.0f) inv_sqrt2 = 0.70710678f;
+
+    /* 实车坐标标定：
+     * - 遥控器实际正前对应原运动学的 right_raw 正方向；
+     * - API 原 forward_raw 正方向在实车上对应右移。
+     */
+    forward_raw = right_mps / speed_mps_per_erpm;
+    right_raw = forward_mps / speed_mps_per_erpm;
+    yaw_raw = yaw_cmd * rc_ctrl.chassis_k * 1.06f;
+
+    rc_ctrl.vt_lf = (-forward_raw - right_raw) * inv_sqrt2 + yaw_raw;
+    rc_ctrl.vt_rf = ( forward_raw - right_raw) * inv_sqrt2 - yaw_raw;
+    rc_ctrl.vt_lb = (-forward_raw + right_raw) * inv_sqrt2 - yaw_raw;
+    rc_ctrl.vt_rb = ( forward_raw + right_raw) * inv_sqrt2 + yaw_raw;
+}
+
+static void Chassis_StartMoveTask(int8_t direction)
+{
+    // 任务启动时冻结起点位姿和初始朝向，后续误差都基于这组参考系计算
+    move_dir = (direction >= 0) ? 1 : -1;
+    Chassis_StartPolarMoveTask(0.0f, nx16_ctrl.CoreInstruction.Distance * (float)move_dir);
+}
+
+/* 将目标“极坐标位移”展开成车体前向/横向位移目标，并启动闭环位移任务。 */
+static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m)
+{
+    float move_angle_rad;
+    float c_world;
+    float s_world;
+    HWT9053Heading_t heading;
+
+    Chassis_follow_pid.shell.shell_i_part = 0.0f;
+    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
+    Chassis_follow_pid.shell.shell_out = 0.0f;
+
+    move_start_fused_x = g_odom.pose.x_m;
+    move_start_fused_y = g_odom.pose.y_m;
+    move_start_x = g_odom.pose.encoder_x_m;
+    move_start_y = g_odom.pose.encoder_y_m;
+    move_start_yaw_rad = g_odom.pose.yaw_total_rad;
+    if (ChassisGetHeading(&heading))
+    {
+        move_start_yaw_deg = heading.yaw_total_deg;
+    }
+    else
+    {
+        move_start_yaw_deg = g_odom.pose.yaw_total_rad * RAD_TO_DEG;
+    }
+    move_start_encoder_x = move_start_x;
+    move_start_encoder_y = move_start_y;
+    move_start_imu_x = g_odom.pose.imu_x_m;
+    move_start_imu_y = g_odom.pose.imu_y_m;
+    target_yaw_rad = move_start_yaw_rad;
+    target_distance = fabsf(distance_m);
+    move_angle_rad = ChassisNormalizeAngleDeg(angle_deg) * DEG_TO_RAD;
+    target_forward_distance = cosf(move_angle_rad) * distance_m;
+    target_lateral_distance = -sinf(move_angle_rad) * distance_m;
+
+    move_prev_control_traveled = 0.0f;
+    move_prev_control_lateral = 0.0f;
+    move_last_tick_ms = HAL_GetTick();
+    move_filtered_forward_vel = 0.0f;
+    move_filtered_lateral_vel = 0.0f;
+    move_cmd_forward_mps = 0.0f;
+    move_cmd_lateral_mps = 0.0f;
+    move_finish_hold_count = 0u;
+    move_finish_latched = 0u;
+    move_slip_hold_count = 0u;
+
+    c_world = cosf(move_start_yaw_rad);
+    s_world = sinf(move_start_yaw_rad);
+    move_target_x = move_start_x + c_world * target_lateral_distance - s_world * target_forward_distance;
+    move_target_y = move_start_y + s_world * target_lateral_distance + c_world * target_forward_distance;
+
+    rc_ctrl.feedback_angle_class = move_start_yaw_deg;
+    rc_ctrl.target_angle_class = move_start_yaw_deg;
+    rc_ctrl.chassis_vx = 0.0f;
+    rc_ctrl.chassis_vy = 0.0f;
+    rc_ctrl.chassis_k = 4.05f;
+    Chassis_SetMoveWheelSpeed(0.0f, 0.0f, 0.0f);
+    move_direct_wheel_mode = 1u;
+    nx16_ctrl.TaskTime = MOVE_TASK_TIMEOUT_TICK;
+}
+
+static void Chassis_UpdateMoveTask(void)
+{
+    float dx_world = g_odom.pose.x_m - move_start_fused_x;
+    float dy_world = g_odom.pose.y_m - move_start_fused_y;
+    float dx_encoder_world = g_odom.pose.encoder_x_m - move_start_encoder_x;
+    float dy_encoder_world = g_odom.pose.encoder_y_m - move_start_encoder_y;
+    float dx_imu_world = g_odom.pose.imu_x_m - move_start_imu_x;
+    float dy_imu_world = g_odom.pose.imu_y_m - move_start_imu_y;
+    float c0 = cosf(move_start_yaw_rad);
+    float s0 = sinf(move_start_yaw_rad);
+    float fused_forward;
+    float fused_lateral;
+    float encoder_traveled;
+    float imu_traveled;
+    float encoder_lateral;
+    float imu_lateral;
+    float control_forward;
+    float control_lateral;
+    float remain_forward;
+    float remain_lateral;
+    float feedback_dt;
+    float instant_forward_vel;
+    float instant_lateral_vel;
+    float forward_vel;
+    float lateral_vel;
+    float target_forward_mps;
+    float target_lateral_mps;
+    float forward_step;
+    float lateral_step;
+    float dist_to_target;
+    float abs_lateral;
+    float yaw_error_deg;
+    float abs_yaw_error_deg;
+    float imu_speed_abs;
+    float world_acc_abs;
+    uint8_t slip_detected = 0u;
+    uint32_t now_tick_ms;
+    uint32_t delta_tick_ms;
+    HWT9053Heading_t heading;
+
+    if (!ChassisGetHeading(&heading))
+    {
+        FinishTask(STATUS_CMD_FAILED);
+        return;
+    }
+    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+    rc_ctrl.target_angle_class = move_start_yaw_deg;
+    rc_ctrl.chassis_wz = Chassis_Follow_Control(rc_ctrl.target_angle_class,
+                                                rc_ctrl.feedback_angle_class,
+                                                &Chassis_follow_pid);
+
+    fused_forward = (-dx_world * s0 + dy_world * c0);
+    fused_lateral = dx_world * c0 + dy_world * s0;
+    encoder_traveled = (-dx_encoder_world * s0 + dy_encoder_world * c0);
+    imu_traveled = (-dx_imu_world * s0 + dy_imu_world * c0);
+    encoder_lateral = dx_encoder_world * c0 + dy_encoder_world * s0;
+    imu_lateral = dx_imu_world * c0 + dy_imu_world * s0;
+
+    // 编码器更稳定、IMU 更灵敏，这里按固定权重融合前向和横向位移
+    control_forward = encoder_traveled + (fused_forward - encoder_traveled) * MOVE_FUSED_POS_WEIGHT;
+    control_lateral = encoder_lateral + (fused_lateral - encoder_lateral) * MOVE_FUSED_LAT_WEIGHT;
+    remain_forward = target_forward_distance - control_forward;
+    remain_lateral = target_lateral_distance - control_lateral;
+
+    now_tick_ms = HAL_GetTick();
+    delta_tick_ms = now_tick_ms - move_last_tick_ms;
+    move_last_tick_ms = now_tick_ms;
+    feedback_dt = (delta_tick_ms > 0u) ? ((float)delta_tick_ms * 0.001f) : MOVE_FEEDBACK_DT_FALLBACK_S;
+    if (feedback_dt <= 0.0f || feedback_dt > 0.05f) feedback_dt = MOVE_FEEDBACK_DT_FALLBACK_S;
+
+    instant_forward_vel = (control_forward - move_prev_control_traveled) / feedback_dt;
+    instant_lateral_vel = (control_lateral - move_prev_control_lateral) / feedback_dt;
+    move_prev_control_traveled = control_forward;
+    move_prev_control_lateral = control_lateral;
+    move_filtered_forward_vel += (instant_forward_vel - move_filtered_forward_vel) * MOVE_VEL_FILTER_ALPHA;
+    move_filtered_lateral_vel += (instant_lateral_vel - move_filtered_lateral_vel) * MOVE_VEL_FILTER_ALPHA;
+    forward_vel = move_filtered_forward_vel;
+    lateral_vel = move_filtered_lateral_vel;
+
+    yaw_error_deg = rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class;
+    abs_yaw_error_deg = fabsf(yaw_error_deg);
+    imu_speed_abs = sqrtf(g_odom.pose.imu_vx_mps * g_odom.pose.imu_vx_mps +
+                          g_odom.pose.imu_vy_mps * g_odom.pose.imu_vy_mps);
+    world_acc_abs = sqrtf(g_odom.pose.ax_mps2 * g_odom.pose.ax_mps2 +
+                          g_odom.pose.ay_mps2 * g_odom.pose.ay_mps2);
+
+    // 编码器显示在走，但 IMU 速度和加速度都很小，可视为疑似打滑
+    if (fabsf(forward_vel) > MOVE_SLIP_ENC_SPEED_MPS &&
+        imu_speed_abs < MOVE_SLIP_IMU_SPEED_MPS &&
+        world_acc_abs < MOVE_SLIP_ACCEL_MPS2)
+    {
+        if (move_slip_hold_count < MOVE_SLIP_HOLD_TICK) move_slip_hold_count++;
+    }
+    else if (move_slip_hold_count > 0u)
+    {
+        move_slip_hold_count--;
+    }
+    if (move_slip_hold_count >= MOVE_SLIP_HOLD_TICK) slip_detected = 1u;
+
+    if (target_distance <= 0.001f)
+    {
+        FinishTask(STATUS_CMD_SUCCESS);
+        return;
+    }
+
+    abs_lateral = fabsf(remain_lateral);
+    dist_to_target = sqrtf(remain_forward * remain_forward + remain_lateral * remain_lateral);
+
+    if (!move_finish_latched &&
+        (dist_to_target <= MOVE_FINISH_TARGET_RADIUS_M ||
+         (fabsf(remain_forward) <= MOVE_FINISH_THRESH_M &&
+          abs_lateral <= MOVE_FINISH_LATERAL_M)) &&
+        abs_yaw_error_deg <= MOVE_FINISH_YAW_DEG &&
+        fabsf(forward_vel) <= MOVE_FINISH_SPEED_MPS &&
+        fabsf(lateral_vel) <= MOVE_FINISH_SPEED_MPS)
+    {
+        move_finish_latched = 1u;
+        move_finish_hold_count = 0u;
+        move_cmd_forward_mps = 0.0f;
+        move_cmd_lateral_mps = 0.0f;
+    }
+
+    if (move_finish_latched)
+    {
+        // 命中终点后先保持几拍，再结束任务，避免临界抖动反复触发
+        rc_ctrl.chassis_vx = 0.0f;
+        rc_ctrl.chassis_vy = 0.0f;
+        Chassis_SetMoveWheelSpeed(0.0f, 0.0f, rc_ctrl.chassis_wz);
+        if (move_finish_hold_count < MOVE_FINISH_HOLD_TICK) move_finish_hold_count++;
+        if (move_finish_hold_count >= MOVE_FINISH_HOLD_TICK)
+        {
+            FinishTask(STATUS_CMD_SUCCESS);
+            return;
+        }
+    }
+    else
+    {
+        target_forward_mps = sqrtf(2.0f * MOVE_MAX_DECEL_MPS2 * fabsf(remain_forward));
+        target_forward_mps = MoveTaskClamp(target_forward_mps, 0.0f, MOVE_MAX_SPEED_MPS);
+        if (slip_detected && target_forward_mps > MOVE_SLIP_LIMIT_SPEED_MPS)
+        {
+            target_forward_mps = MOVE_SLIP_LIMIT_SPEED_MPS;
+        }
+        if (fabsf(remain_forward) > MOVE_FINISH_TARGET_RADIUS_M && target_forward_mps < MOVE_MIN_SPEED_MPS)
+        {
+            target_forward_mps = MOVE_MIN_SPEED_MPS;
+        }
+        if (remain_forward < 0.0f)
+        {
+            target_forward_mps = -target_forward_mps;
+        }
+
+        target_lateral_mps = remain_lateral * MOVE_LATERAL_KP_MPS - lateral_vel * MOVE_LATERAL_KD_MPS;
+        target_lateral_mps = MoveTaskClamp(target_lateral_mps,
+                                           -MOVE_LATERAL_MAX_SPEED_MPS,
+                                            MOVE_LATERAL_MAX_SPEED_MPS);
+
+        forward_step = MoveTaskClamp(target_forward_mps - move_cmd_forward_mps,
+                                     -MOVE_MAX_DECEL_MPS2 * feedback_dt,
+                                      MOVE_MAX_ACCEL_MPS2 * feedback_dt);
+        lateral_step = MoveTaskClamp(target_lateral_mps - move_cmd_lateral_mps,
+                                     -MOVE_MAX_ACCEL_MPS2 * feedback_dt,
+                                      MOVE_MAX_ACCEL_MPS2 * feedback_dt);
+        move_cmd_forward_mps += forward_step;
+        move_cmd_lateral_mps += lateral_step;
+        rc_ctrl.chassis_vx = move_cmd_forward_mps * 1000.0f;
+        rc_ctrl.chassis_vy = move_cmd_lateral_mps * 1000.0f;
+        Chassis_SetMoveWheelSpeed(move_cmd_forward_mps,
+                                  move_cmd_lateral_mps,
+                                  rc_ctrl.chassis_wz);
+    }
+
+    g_dbg.curr_x = g_odom.pose.encoder_x_m;
+    g_dbg.curr_y = g_odom.pose.encoder_y_m;
+    g_dbg.curr_yaw = g_odom.pose.yaw_rad;
+    g_dbg.target_x = move_target_x;
+    g_dbg.target_y = move_target_y;
+    g_dbg.tar_yaw = target_yaw_rad;
+    g_dbg.cmd_vx = rc_ctrl.chassis_vx / 1000.0f;
+    g_dbg.cmd_vy = rc_ctrl.chassis_vy / 1000.0f;
+    g_dbg.cmd_wz = rc_ctrl.chassis_wz;
+    g_dbg.dbg_fused_forward = control_forward;
+    g_dbg.dbg_encoder_forward = encoder_traveled;
+    g_dbg.dbg_imu_forward = imu_traveled;
+    g_dbg.dbg_fused_lateral = control_lateral;
+    g_dbg.dbg_encoder_lateral = encoder_lateral;
+    g_dbg.dbg_imu_lateral = imu_lateral;
+    g_dbg.dbg_remain = dist_to_target;
+    g_dbg.dbg_forward_vel = forward_vel;
+    g_dbg.dbg_lateral_vel = lateral_vel;
+    g_dbg.dbg_encoder_y = slip_detected ? 1.0f : 0.0f;
+    g_dbg.dbg_imu_y = abs_yaw_error_deg;
+}
+void TaskInit(void)
+{
+    memset(&nx16_ctrl, 0, sizeof(nx16_ctrl));
+    rc_ctrl.chassis_vx = 0;
+    rc_ctrl.chassis_vy = 0; 
+    rc_ctrl.chassis_wz = 0; 
+    
+    // QEKF_INS.Yaw_Zxj = 0; // 保留注释，避免重置世界坐标系
+    rc_ctrl.target_angle_class = 0;
+	
+    HWT9053CAN_SetYawZero();
+    rc_ctrl.feedback_angle_class = 0;
+	
+	
+    // 里程计清零
+    OdomXDrive_ResetAllWithImuZero(&g_odom);
+    move_direct_wheel_mode = 0u;
+    move_finish_hold_count = 0u;
+    move_finish_latched = 0u;
+    move_slip_hold_count = 0u;
+    rotate_finish_hold_count = 0u;
+    target_distance = 0.0f;
+    target_forward_distance = 0.0f;
+    target_lateral_distance = 0.0f;
+    target_yaw_rad = 0.0f;
+    //    rc_ctrl.feedback_angle_class = 0;
+}
+
+/* ===========================
+ * 里程计初始化。
+ * =========================== */
+static void App_InitOdomOnce(void)
+{
+    /* 1) 反馈角度单位为输出轴 deg，位移比例必须使用 m/deg。 */
+    OdomXDrive_Config_t cfg = OdomXDrive_GetDefaultConfig();
+    cfg.encoder_feedback_gain = 0.0f;
+    cfg.encoder_feedback_max_mps = 0.0f;
+    cfg.k_pos_m_per_unit = VESC_WHEEL_M_PER_OUTPUT_DEG;
+
+    /* 2) 初始化：只执行一次，重复调用不会重复初始化 */
+    OdomXDrive_InitOnce(&g_odom, &cfg);
+
+    /* 3) 绑定四个逻辑轮位对应的 VESC，里程计直接读取真实反馈 */
+    OdomXDrive_BindVESC(&g_odom,
+                        VESC_LF_OUTPUT_ID,
+                        VESC_RF_OUTPUT_ID,
+                        VESC_LB_OUTPUT_ID,
+                        VESC_RB_OUTPUT_ID);
+
+    /* 4) 一键复位：IMU 清零并同步清空里程计 */
+    OdomXDrive_ResetAllWithImuZero(&g_odom);
+}
+
+/* ===========================
+ * 底盘任务中的里程计刷新入口。
+ * =========================== */
+static void App_TaskLoop(void)
+{
+    /* 每个底盘周期调用一次。 */
+    OdomXDrive_Update(&g_odom);
+
+    /* 读取当前位姿输出。 */
+    float x = g_odom.pose.encoder_x_m;
+    float y = g_odom.pose.encoder_y_m;
+    float yaw_total = g_odom.pose.yaw_total_rad;
+
+    (void)x; (void)y; (void)yaw_total;
+	
+	
+    nx16_ctrl.current_x = x;
+    nx16_ctrl.current_y = y;
+
+    // 同步给上位机使用的累计航向角，便于直接对齐 IMU yaw_total
+    nx16_ctrl.current_yaw = yaw_total * 57.2957795f;
+}
+
+
+void FinishTask(uint8_t status)
+{
+//    UpdateOdometry();
+    
+    nx16_ctrl.InTask = 0;
+    nx16_ctrl.TaskTime = 0;
+    nx16_ctrl.RxFlag = 0; 
+
+    move_direct_wheel_mode = 0u;
+    if (chassis_api_mode == CHASSIS_API_MODE_ROTATE_TASK)
+    {
+        chassis_api_mode = CHASSIS_API_MODE_NONE;
+    }
+    rc_ctrl.chassis_vx = 0;
+    rc_ctrl.chassis_vy = 0;
+    rc_ctrl.chassis_wz = 0;
+    rc_ctrl.vt_lf = 0; rc_ctrl.vt_rf = 0; rc_ctrl.vt_lb = 0; rc_ctrl.vt_rb = 0;
+    move_cmd_forward_mps = 0.0f;
+    move_cmd_lateral_mps = 0.0f;
+    move_filtered_forward_vel = 0.0f;
+    move_filtered_lateral_vel = 0.0f;
+    move_finish_hold_count = 0u;
+    move_finish_latched = 0u;
+    move_slip_hold_count = 0u;
+    rotate_finish_hold_count = 0u;
+
+    nx16_ctrl.Status = status;
+    nx16_ctrl.LastCommandID = nx16_ctrl.CommandID; 
+    
+    
+    SendStatusAndOdometryToAgent(&huart1); // 向上位机回传机器人实时状态
+    
+    // 任务结束后保持当前角度，不做回弹
+    rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+}
+
+int16_t Chassis_Follow_Control(float target, float feedback, One_PID_Para_t *pid)
+{
+    float error = target - feedback;
+    float abs_error = (error >= 0) ? error : -error;
+    
+    if (abs_error <= 1.0f) return 0;
+    return One_Pid_Ctrl(target, feedback, pid);
+}

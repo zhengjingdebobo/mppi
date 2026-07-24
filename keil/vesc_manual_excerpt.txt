@@ -1,0 +1,167 @@
+--- PAGE 4 ---
+4 
+ 
+2. 电机校准步骤 
+1. 启动 VESC Tool 6.05（运行 vesc_tool_6.05.exe）。 
+2. 点击软件右上角的 连接（Connect） 按钮，与 VESC 电调控制器建立连
+接。 
+ 
+ 
+3. 恢复默认设置，依次点击右侧按钮 
+第一个按钮是恢复默认电机设置参数，第二个按钮是写入电机设置参数
+到 VESC 电调控制器（写入成功界面右下角会有提示）。第三个按钮是
+恢复默认应用设置参数，第四个按钮是写入应用设置参数到 VESC 电调
+控制器（写入成功界面右下角会有提示）。 
+依次点击第一，二，三，四个按键。 
+
+
+--- PAGE 15 ---
+15 
+ 
+例如，M3508 的极对数为 7，因此机械转速计算公式为： 
+机械RPM = ERPM
+极对数
+ 
+例如，当 ERPM = 1000 时，机械转速约为： 
+1000÷7≈142.86 RPM 
+若3508电机配备大疆原装减速箱（减速比约 19:1），输出轴转速需再除以减速
+比，最终输出转速约为： 
+142.86÷19≈7.5 RPM 
+另外，M2006 的极对数为 7，（减速比约 36:1）。 
+6. CAN 通信 
+VESC 电调控制器默认的 CAN 通信波特率为 500 Kbps，大疆的RoboMaster设
+备的CAN通信波特率为1Mbps，我们可以修改其参数，使其更适合我们使用，
+可在下图所示位置进行修改。 
+在 App Settings 中按图示进行设置，修改完成后请点击右侧 ⬇A 按钮保存配置。
+ 
+
+
+--- PAGE 16 ---
+16 
+ 
+可以参考我们的开源代码，和开源设备，对于VESC电调进行测试。 
+VESC 的 CAN 通信主要基于 扩展帧（29bit ID） ，按照 CAN 协议封装命令号 和
+设备 ID。 
+VESC 定期会广播 状态信息包 ，扩展帧 ID范围是 0x900 – 0x9FF，代表
+CAN_PACKET_STATUS 返回包，例如上面截图里设置的CAN ID 是100，其16进
+制表示是64 ，那么主机（您的控制板）会收到，0x9 64 → 0x9( 命令) + 
+0x64(=100)发来的状态信息。表示VESC ID =100的状态包。其内容如下： 
+字节 内容 
+0-3 ERPM（有符号 32位整数） 
+4-5 实际电流 ×10（单位 0.1A） 
+6-7 占空比 ×1000（单位 0.001） 
+示例的解析函数如下： 
+if (CAN_ID >= 0x900 && CAN_ID <= 0x9FF) 
+{ 
+    uint8_t vesc_id = CAN_ID & 0xFF; 
+    int32_t erpm = 
+        (CAN_Data[0] << 24) | 
+        (CAN_Data[1] << 16) | 
+        (CAN_Data[2] << 8)  | 
+         CAN_Data[3]; 
+    float current = ((int16_t)(CAN_Data[4] << 8 | CAN_Data[5])) / 10.0f; 
+    float duty    = ((int16_t)(CAN_Data[6] << 8 | CAN_Data[7])) / 1000.0f; 
+    printf("VESC[%d] ERPM=%ld Current=%.1fA Duty=%.3f\n", 
+
+--- PAGE 17 ---
+17 
+ 
+            vesc_id, erpm, current, duty); 
+} 
+而转速的设置，通过命令号 3（CAN_PACKET_SET_RPM）完成，即通过主机向
+0x364（3 是命令号，64 是 16 进制的 ID=100）地址发送信息，示例的设置函数
+如下。只需填 rpm 和 VESC ID 即可让电机转动。 
+void VESC_SendRPM(uint8_t vesc_id, int32_t rpm) 
+{ 
+    uint32_t ext_id = ((uint32_t)3 << 8) | vesc_id;   // CAN_PACKET_SET_RPM 
+    TxMessage.IDE   = CAN_Id_Extended; 
+    TxMessage.RTR   = CAN_RTR_Data; 
+    TxMessage.ExtId = ext_id; 
+    TxMessage.DLC   = 8; 
+    TxMessage.Data[0] = (rpm >> 24) & 0xFF; 
+    TxMessage.Data[1] = (rpm >> 16) & 0xFF; 
+    TxMessage.Data[2] = (rpm >> 8) & 0xFF; 
+    TxMessage.Data[3] = (rpm)       & 0xFF; 
+    TxMessage.Data[4] = 0; 
+    TxMessage.Data[5] = 0; 
+    TxMessage.Data[6] = 0; 
+    TxMessage.Data[7] = 0; 
+    CAN1_send_data_vesc(); 
+} 
+
+--- PAGE 18 ---
+18 
+ 
+建议调试程序的时候，先检查 CAN 通信的配置，确保其可以接收到 VESC 电调
+发送过来的信息。然后成功解析信息的基础上，进行发送的测试。 
+进一步的，可以参考我们通用测试器的代码，进行配置。程序运行在
+STM32F103C8T6 单片机上，我们提供完整的代码和接口，您可以据此进行二次
+开发。 
+关于VESC电调及其CAN总线通信的更多信息，可以参考： 
+https://github.com/vedderb/bldc/blob/master/documentation/comm_can.md 
+注意： 
+关于标准帧和扩展帧的区别 
+标准帧（大疆 DJI RoboMaster 设备采用） 
+标准帧使用 11 位标识符（Identifier） ，标识符范围从 0x000 到 0x7FF。设备在
+接收标准帧时通过 IDE=0 进行识别，并从 StdId 字段中读取标识符。 
+扩展帧（VESC CAN 协议采用） 
+扩展帧使用 29 位标识符，由 11 位基本 ID 与额外的 18 位扩展字段组成，可用
+于复杂系统或需要大量定义消息类型的应用。扩展帧在接收时通过 IDE=1 区分，
+并从 ExtId 字段读取完整的 29 位标识符。  
+标准帧和扩展帧可以同时存在，同时使用，不会发生冲突。在如下的接收中断
+的示例程序里进行处理： 
+
+--- PAGE 19 ---
+19 
+ 
+/* --- 兼容标准帧与扩展帧的 CAN RX 中断示例 --- */ 
+void USB_LP_CAN1_RX0_IRQHandler(void) 
+{ 
+    CanRxMsg rx; 
+    if (CAN_GetITStatus(CAN1, CAN_IT_FMP0) != RESET) 
+    { 
+        CAN_ClearITPendingBit(CAN1, CAN_IT_FMP0); 
+        CAN_Receive(CAN1, CAN_FIFO0, &rx); 
+ 
+        /* ---- 提取 CAN ID（自动兼容 11bit 与 29bit） ---- */ 
+        uint32_t id = (rx.IDE == CAN_Id_Extended) ? 
+                        rx.ExtId : rx.StdId; 
+ 
+        /* ---- 扩展帧：解析 VESC 协议 ---- */ 
+        if (rx.IDE == CAN_Id_Extended) 
+        { 
+            uint8_t cmd     = (id >> 8) & 0xFF;   // 命令号 
+            uint8_t vesc_id =  id        & 0xFF;  // 设备 ID 
+            switch (cmd) 
+            { 
+                case 9: /* CAN_PACKET_STATUS */ 
+                { 
+                    int32_t erpm = 
+
+--- PAGE 21 ---
+21 
+ 
+7. PWM 控制 
+ 
+点击 General ，按图示在 2 初选择 PPM and UART，修改完成后请点击右侧 
+⬇A 按钮保存配置。 
+ 
+ 
+
+
+--- PAGE 22 ---
+22 
+ 
+点击 PPM, 在 2 处选择 PWM 信号的控制对象（电流，占空比，转速
+等），修改完成后请点击右侧 ⬇A 按钮保存配置。 
+ 
+在 Mapping 和 Throttle Curve 界面可以调整油门和控制对象的映射关系，关于
+使用兼容舵机 PWM 信号控制 VESC FOC 电调的更多的详细信息可以参考
+https://vesc-project.com/documentation 和 
+https://www.youtube.com/watch?v=HfjgwhYi8IE 
+ 
+8. 参考文献（References） 
+[1] VESC Project. 《VESC Tool —— 官方用户手册与文档》: https://vesc-
+project.com.  
+[2] RoboMaster 社区，南京邮电大学 Potential 战队. N630 电调说明及调试流程.  
+
