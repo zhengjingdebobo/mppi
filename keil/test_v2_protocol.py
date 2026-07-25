@@ -72,7 +72,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         """,
     )
     parser.add_argument("--port", default="COM12", help="串口号，默认 COM12")
-    parser.add_argument("--baudrate", type=int, default=9600, help="波特率，默认 9600")
+    parser.add_argument("--baudrate", type=int, default=115200, help="波特率，默认 115200")
     parser.add_argument(
         "--only",
         choices=("all", "speed", "distance", "rotate", "deadzone"),

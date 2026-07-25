@@ -31,10 +31,26 @@ compiling pid.c...
 ..\CUBOT\Cubot_algorithm\pid.h(158): warning:  #1-D: last line of file ends without a newline
   #endif
 ..\CUBOT\Cubot_algorithm\pid.c: 1 warning, 0 errors
+compiling chassis.c...
+../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
+  uint8_t RemoteControlIsOnline();
+../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
+  void BSPInit();
+../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
+  void MotorControlTask();
+../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
+  void DaemonTask();
+../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
+  Nx16SwitchMode_t GetNx16_Switch_mode();
+../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
+  uint8_t Nx16ControlIsOnline();
+../CUBOT/Cubot_algorithm/pid.h(158): warning:  #1-D: last line of file ends without a newline
+  #endif
+..\CUBOT\Cubot_modules\chassis.c: 7 warnings, 0 errors
 linking...
-Program Size: Code=40672 RO-data=660 RW-data=880 ZI-data=85312  
+Program Size: Code=40660 RO-data=660 RW-data=880 ZI-data=85312  
 FromELF: creating hex file...
-"work_Zxj\work_Zxj.axf" - 0 Error(s), 1 Warning(s).
+"work_Zxj\work_Zxj.axf" - 0 Error(s), 8 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -57,7 +73,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE@6.2.0
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:03
 </pre>
 </body>
 </html>

@@ -2,29 +2,29 @@
 
 
 /*
-		float shell_P;    //Íâ»·p
+		float shell_P;    //ï¿½â»·p
 		float shell_I;
 		float shell_D;
     float shell_delta;
 	
-		float core_P;    //ÄÚ»·p
+		float core_P;    //ï¿½Ú»ï¿½p
 		float core_I;
 		float core_D;
 		float core_delta;
 	
-		float shell_p_part;	       //Íâ»· p²¿·Ö
+		float shell_p_part;	       //ï¿½â»· pï¿½ï¿½ï¿½ï¿½
 		float shell_i_part;
 		float shell_i_part_maxlimit;
 		float shell_i_part_detach;
 		float shell_d_part;
 		float shell_d_part_maxlimit;
 	
-		float core_p_part;        //ÄÚ»·p²¿·Ö
+		float core_p_part;        //ï¿½Ú»ï¿½pï¿½ï¿½ï¿½ï¿½
 		float out_max_limit;
 		float shell_out;	
 		float core_out;	
-		float out;                //Êä³ö
-		ÒªÊÇÎÒÐ´¿Ï¶¨¼ÓÉÏ 
+		float out;                //ï¿½ï¿½ï¿½??
+		Òªï¿½ï¿½ï¿½ï¿½Ð´ï¿½Ï¶ï¿½ï¿½ï¿½ï¿½ï¿½ 
 */
 
 
@@ -36,10 +36,11 @@ One_PID_Para_t  Chassis_follow_pid  =
 		.shell_I = 0.5,
 		.shell_D = 0,
 
-		
+
 		.shell_p_part_maxlimit = 500,
 		.shell_i_part_maxlimit = 500,
-		.shell_d_part_maxlimit = 0,		
+		.shell_i_part_detach   = 15.0f,
+		.shell_d_part_maxlimit = 0,
 		.shell_max_limit       = 800 //1000
 	}
 
@@ -202,11 +203,11 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 	
 	
 	
-	/************ P²Ù×÷  ************/
+	/************ Pï¿½ï¿½ï¿½ï¿½  ************/
 	
 
 	
-	/************ I²Ù×÷  ************/
+	/************ Iï¿½ï¿½ï¿½ï¿½  ************/
 	
 	PID->shell.shell_i_part += PID->shell.shell_delta * PID->shell.shell_I;
 	
@@ -219,7 +220,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 		
 		
 		
-	/************ D²Ù×÷  ************/
+	/************ Dï¿½ï¿½ï¿½ï¿½  ************/
 		
 		PID->shell.shell_d_part = ( PID->shell.shell_delta - PID->shell.shell_delta_last )*PID->shell.shell_D;
 		
@@ -228,7 +229,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 		
 		PID->shell.shell_delta_last=PID->shell.shell_delta;
 		
-	/************ Íâ»·Êä³ö  ************/
+	/************ ï¿½â»·ï¿½ï¿½ï¿½??  ************/
 		PID->shell.shell_out =(PID->shell.shell_p_part+PID->shell.shell_i_part+PID->shell.shell_d_part); 
 		
 		if( (PID->shell.shell_out) > (PID->shell.shell_max_limit) )   PID->shell.shell_out  = PID->shell.shell_max_limit;
@@ -239,7 +240,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 	PID->core.core_delta = PID->shell.shell_out - core_feedback;	
 		
 		
-			/************ P²Ù×÷  ************/
+			/************ Pï¿½ï¿½ï¿½ï¿½  ************/
 	
 	PID->core.core_p_part = PID->core.core_delta * PID->core.core_P;
 
@@ -247,7 +248,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 	if( (PID->core.core_p_part) < -(PID->core.core_p_part_maxlimit) )  PID->core.core_p_part = -PID->core.core_p_part_maxlimit;
 	
 	
-	/************ I²Ù×÷  ************/
+	/************ Iï¿½ï¿½ï¿½ï¿½  ************/
 	
 	PID->core.core_i_part += PID->core.core_delta * PID->core.core_I;
 	
@@ -260,7 +261,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 		
 		
 		
-	/************ D²Ù×÷  ************/
+	/************ Dï¿½ï¿½ï¿½ï¿½  ************/
 		
 		PID->core.core_d_part = ( PID->core.core_delta - PID->core.core_delta_last )*PID->core.core_D;
 		
@@ -268,7 +269,7 @@ float Double_Pid_Ctrl(float shell_target,float shell_feedback,float core_feedbac
 	  if( (PID->core.core_d_part) < -(PID->core.core_d_part_maxlimit) )  PID->core.core_d_part = -PID->core.core_d_part_maxlimit;
 		PID->core.core_delta_last=PID->core.core_delta;
 		
-	/************ ÄÚ»·Êä³ö  ************/
+	/************ ï¿½Ú»ï¿½ï¿½ï¿½ï¿½??  ************/
 		PID->core.core_out =(PID->core.core_p_part+PID->core.core_i_part+PID->core.core_d_part); 
 		
 		if( (PID->core.core_out) > (PID->core.core_max_limit) )   PID->core.core_out  = PID->core.core_max_limit;
@@ -287,24 +288,15 @@ float One_Pid_Ctrl(float shell_target,float shell_feedback,One_PID_Para_t* PID)
 	
 	
 	
-	/************ P²Ù×÷  ************/
-	
+	/************ Pï¿½ï¿½ï¿½ï¿½  ************/
+
 	PID->shell.shell_p_part = PID->shell.shell_delta * PID->shell.shell_P;
 
 	if( (PID->shell.shell_p_part) > (PID->shell.shell_p_part_maxlimit) )   PID->shell.shell_p_part  = PID->shell.shell_p_part_maxlimit;
 	if( (PID->shell.shell_p_part) < -(PID->shell.shell_p_part_maxlimit) )  PID->shell.shell_p_part = -PID->shell.shell_p_part_maxlimit;
-	
-	
-	
-	/************ P²Ù×÷  ************/
-	
-	PID->shell.shell_p_part = PID->shell.shell_delta * PID->shell.shell_P;
 
-	if( (PID->shell.shell_p_part) > (PID->shell.shell_p_part_maxlimit) )   PID->shell.shell_p_part  = PID->shell.shell_p_part_maxlimit;
-	if( (PID->shell.shell_p_part) < -(PID->shell.shell_p_part_maxlimit) )  PID->shell.shell_p_part = -PID->shell.shell_p_part_maxlimit;
-	
-	
-	/************ I²Ù×÷  ************/
+
+	/************ Iï¿½ï¿½ï¿½ï¿½  ************/
 	
 		
 	PID->shell.shell_i_part += PID->shell.shell_delta * PID->shell.shell_I;
@@ -318,7 +310,7 @@ float One_Pid_Ctrl(float shell_target,float shell_feedback,One_PID_Para_t* PID)
 		
 		
 		
-	/************ D²Ù×÷  ************/
+	/************ Dï¿½ï¿½ï¿½ï¿½  ************/
 		
 		PID->shell.shell_d_part = ( PID->shell.shell_delta - PID->shell.shell_delta_last )*PID->shell.shell_D;
 		
@@ -327,7 +319,7 @@ float One_Pid_Ctrl(float shell_target,float shell_feedback,One_PID_Para_t* PID)
 		
 		PID->shell.shell_delta_last=PID->shell.shell_delta;
 		
-	/************ Íâ»·Êä³ö  ************/
+	/************ ï¿½â»·ï¿½ï¿½ï¿½??  ************/
 		PID->shell.shell_out =(PID->shell.shell_p_part+PID->shell.shell_i_part+PID->shell.shell_d_part); 
 		
 		if( (PID->shell.shell_out) > (PID->shell.shell_max_limit) )   PID->shell.shell_out  = PID->shell.shell_max_limit;
@@ -372,7 +364,7 @@ float pid_ctrl_zxj(float shell_target,float shell_feedback,float core_feedback,D
 		PID->core.core_delta = PID->shell.shell_out - core_feedback;	
 		
 		
-			/************ P²Ù×÷  ************/
+			/************ Pï¿½ï¿½ï¿½ï¿½  ************/
 	
 	PID->core.core_p_part = PID->core.core_delta * PID->core.core_P;
 
@@ -380,7 +372,7 @@ float pid_ctrl_zxj(float shell_target,float shell_feedback,float core_feedback,D
 	if( (PID->core.core_p_part) < -(PID->core.core_p_part_maxlimit) )  PID->core.core_p_part = -PID->core.core_p_part_maxlimit;
 	
 	
-	/************ I²Ù×÷  ************/
+	/************ Iï¿½ï¿½ï¿½ï¿½  ************/
 	
 	PID->core.core_i_part += PID->core.core_delta * PID->core.core_I;
 	
@@ -393,7 +385,7 @@ float pid_ctrl_zxj(float shell_target,float shell_feedback,float core_feedback,D
 		
 		
 		
-	/************ D²Ù×÷  ************/
+	/************ Dï¿½ï¿½ï¿½ï¿½  ************/
 		
 		PID->core.core_d_part = ( PID->core.core_delta - PID->core.core_delta_last )*PID->core.core_D;
 		
@@ -401,7 +393,7 @@ float pid_ctrl_zxj(float shell_target,float shell_feedback,float core_feedback,D
 	  if( (PID->core.core_d_part) < -(PID->core.core_d_part_maxlimit) )  PID->core.core_d_part = -PID->core.core_d_part_maxlimit;
 		PID->core.core_delta_last=PID->core.core_delta;
 		
-	/************ ÄÚ»·Êä³ö  ************/
+	/************ ï¿½Ú»ï¿½ï¿½ï¿½ï¿½??  ************/
 		PID->core.core_out =(PID->core.core_p_part+PID->core.core_i_part+PID->core.core_d_part); 
 		
 		if( (PID->core.core_out) > (PID->core.core_max_limit) )   PID->core.core_out  = PID->core.core_max_limit;

@@ -42,7 +42,7 @@ class CarController:
     VESC_FRAME_LEN = 78
     
 
-    def __init__(self, port: str = '/dev/ttyUSB0', baudrate: int = 9600):
+    def __init__(self, port: str = '/dev/ttyUSB0', baudrate: int = 115200):
         self.port = port
         self.baudrate = baudrate
         self.raw_yaw_deg = 0.0
@@ -991,7 +991,7 @@ def print_pose(tag: str, car: CarController):
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Car serial control smoke test.")
     parser.add_argument("--port", default="/dev/ttyUSB0")
-    parser.add_argument("--baudrate", type=int, default=9600)
+    parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--distance", type=float, default=0.5)
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--timeout", type=float, default=15.0)

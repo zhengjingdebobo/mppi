@@ -41,7 +41,7 @@
 #define MOVE_SLIP_ACCEL_MPS2       0.12f
 #define MOVE_SLIP_LIMIT_SPEED_MPS  0.10f
 #define MOVE_SLIP_HOLD_TICK        8u
-#define ROTATE_CONTROL_MAX         250.0f
+#define ROTATE_CONTROL_MAX         380.0f
 #define ROTATE_FINISH_YAW_DEG      1.0f
 #define ROTATE_FINISH_RATE_DPS     3.0f
 #define ROTATE_FINISH_HOLD_TICK    150u
@@ -91,6 +91,7 @@ typedef enum
     CHASSIS_API_MODE_POLAR_VELOCITY,
     CHASSIS_API_MODE_POLAR_DISTANCE,
     CHASSIS_API_MODE_ROTATE_TASK,
+    CHASSIS_API_MODE_PATH_TRACKING,
 } ChassisApiMode_e;
 
 static ChassisApiMode_e chassis_api_mode = CHASSIS_API_MODE_NONE;
@@ -420,6 +421,9 @@ static void OmniCalculate()
                 }
                 else
                 {
+                    chassis_api_mode = CHASSIS_API_MODE_POLAR_DISTANCE;
+                    rc_ctrl.chassis_vx = 0.0f;
+                    rc_ctrl.chassis_vy = 0.0f;
                     Chassis_StartMoveTask(1);
                     nx16_ctrl.InTask = 1;
                     nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
@@ -433,12 +437,15 @@ static void OmniCalculate()
                 }
                 else
                 {
+                    chassis_api_mode = CHASSIS_API_MODE_POLAR_DISTANCE;
+                    rc_ctrl.chassis_vx = 0.0f;
+                    rc_ctrl.chassis_vy = 0.0f;
                     Chassis_StartMoveTask(-1);
                     nx16_ctrl.InTask = 2;
                     nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
                 }
             }   
-            else if(nx16_ctrl.CommandID == CMD_ROTATE_CCW || nx16_ctrl.CommandID == CMD_ROTATE_CW) 
+            else if(nx16_ctrl.CommandID == CMD_ROTATE_CCW || nx16_ctrl.CommandID == CMD_ROTATE_CW)
             {
                 if (!ChassisClosedLoopFeedbackReady() || !ChassisGetHeading(&heading))
                 {
@@ -446,6 +453,10 @@ static void OmniCalculate()
                 }
                 else
                 {
+                    chassis_api_mode = CHASSIS_API_MODE_ROTATE_TASK;
+                    move_direct_wheel_mode = 0u;
+                    rc_ctrl.chassis_vx = 0.0f;
+                    rc_ctrl.chassis_vy = 0.0f;
                     nx16_ctrl.TaskTime = 30000;
                     rc_ctrl.chassis_k = 8.05f;
                     Chassis_follow_pid.shell.shell_i_part = 0.0f;
@@ -460,6 +471,9 @@ static void OmniCalculate()
             }
             else if(nx16_ctrl.CommandID == CMD_PATH_TRACKING)
             {
+                chassis_api_mode = CHASSIS_API_MODE_PATH_TRACKING;
+                rc_ctrl.chassis_vx = 0.0f;
+                rc_ctrl.chassis_vy = 0.0f;
                 nx16_ctrl.TaskTime = 30000;
                 rc_ctrl.chassis_k = 8.0f;
                 ResetPathIndex();
@@ -491,12 +505,13 @@ static void OmniCalculate()
                 }
                 else if (nx16_ctrl.TaskTime < 300) FinishTask(STATUS_CMD_FAILED);
                 else {
-                    float angle_error = fabsf(rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class);
+                    float angle_error;
                     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
                     angle_error = fabsf(rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class);
                     if (angle_error <= ROTATE_FINISH_YAW_DEG &&
                         fabsf(heading.gyro_z_dps) <= ROTATE_FINISH_RATE_DPS)
                     {
+                        Chassis_follow_pid.shell.shell_i_part = 0.0f;
                         rc_ctrl.chassis_wz = 0.0f;
                         if (rotate_finish_hold_count < ROTATE_FINISH_HOLD_TICK) rotate_finish_hold_count++;
                         if (rotate_finish_hold_count >= ROTATE_FINISH_HOLD_TICK)
@@ -652,8 +667,8 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
     static uint32_t vesc_send_tick = 0u;
     static uint64_t imu_send_us = 0u;
 
-    /* USART1当前为9600 baud（8N1约960 byte/s）。
-     * STATUS 5Hz + VESC 2Hz + IMU 1Hz约752 byte/s。
+    /* USART1 115200 baud (8N1 ≈ 11520 byte/s)。
+     * STATUS 5Hz (86B) + VESC 5Hz (78B) + IMU 50Hz (166B) ≈ 9120 byte/s。
      */
     if (now_tick - status_send_tick >= 200u)
     {
@@ -661,24 +676,24 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
         SendStatusAndOdometryToAgent(&AGENT_UART_HANDLE);
     }
 
-    if (now_tick - vesc_send_tick >= 500u)
+    if (now_tick - vesc_send_tick >= 200u)
     {
         vesc_send_tick = now_tick;
         SendVESCFeedbackToAgent(&AGENT_UART_HANDLE);
     }
 
-    // 控制内部仍读取200Hz IMU；这里只把上位机遥测限制为1Hz。
+    // 控制内部仍读取200Hz IMU；遥测 @50Hz 供上位机实时显示。
     if (imu_send_us == 0u)
     {
         imu_send_us = now_us;
         SendIMUDataToAgent(&AGENT_UART_HANDLE);
     }
-    else if ((now_us - imu_send_us) >= 1000000u)
+    else if ((now_us - imu_send_us) >= 20000u)
     {
         do
         {
-            imu_send_us += 1000000u;
-        } while ((now_us - imu_send_us) >= 1000000u);
+            imu_send_us += 20000u;
+        } while ((now_us - imu_send_us) >= 20000u);
 
         SendIMUDataToAgent(&AGENT_UART_HANDLE);
     }
@@ -1086,7 +1101,9 @@ void FinishTask(uint8_t status)
     nx16_ctrl.RxFlag = 0; 
 
     move_direct_wheel_mode = 0u;
-    if (chassis_api_mode == CHASSIS_API_MODE_ROTATE_TASK)
+    if (chassis_api_mode == CHASSIS_API_MODE_ROTATE_TASK ||
+        chassis_api_mode == CHASSIS_API_MODE_POLAR_DISTANCE ||
+        chassis_api_mode == CHASSIS_API_MODE_PATH_TRACKING)
     {
         chassis_api_mode = CHASSIS_API_MODE_NONE;
     }
@@ -1117,7 +1134,7 @@ int16_t Chassis_Follow_Control(float target, float feedback, One_PID_Para_t *pid
 {
     float error = target - feedback;
     float abs_error = (error >= 0) ? error : -error;
-    
+
     if (abs_error <= 1.0f) return 0;
     return One_Pid_Ctrl(target, feedback, pid);
 }
