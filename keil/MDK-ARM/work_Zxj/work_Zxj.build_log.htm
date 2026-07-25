@@ -27,154 +27,14 @@ Project File Date:  07/22/2026
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 5 (build 528)', folder: 'D:\keil\ARM\ARMCC\Bin'
 Build target 'work_Zxj'
-compiling control_logic.c...
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-..\CUBOT\Cubot_User_Config\control_logic.c(20): warning:  #550-D: variable "ins_start"  was set but never used
-      static float ins_start;
-..\CUBOT\Cubot_User_Config\control_logic.c(21): warning:  #177-D: variable "ins_dt"  was declared but never referenced
-      static float ins_dt;
-..\CUBOT\Cubot_User_Config\control_logic.c(39): warning:  #550-D: variable "motor_dt"  was set but never used
-      static float motor_dt;
-..\CUBOT\Cubot_User_Config\control_logic.c(55): warning:  #550-D: variable "daemon_dt"  was set but never used
-      static float daemon_dt;
-..\CUBOT\Cubot_User_Config\control_logic.c(74): warning:  #550-D: variable "robot_dt"  was set but never used
-      static float robot_dt;
-..\CUBOT\Cubot_User_Config\control_logic.c: 11 warnings, 0 errors
-compiling nx16.c...
-..\CUBOT\Cubot_devices\nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-..\CUBOT\Cubot_devices\nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-..\CUBOT\Cubot_devices\nx16.c(713): warning:  #223-D: function "CANGetHcan1Fifo0CallbackCount" declared implicitly
-      tar_x_converter.f = (float)CANGetHcan1Fifo0CallbackCount();
-..\CUBOT\Cubot_devices\nx16.c(714): warning:  #223-D: function "CANGetHcan1Fifo1DispatchCount" declared implicitly
-      tar_y_converter.f = (float)CANGetHcan1Fifo1DispatchCount();
-..\CUBOT\Cubot_devices\nx16.c(715): warning:  #223-D: function "CANGetLastExtId" declared implicitly
-      tar_yaw_converter.f = (float)CANGetLastExtId();
-..\CUBOT\Cubot_devices\nx16.c(731): warning:  #223-D: function "CANGetHcan1RxMsgCount" declared implicitly
-      cmd_vx_true_converter.f = (float)CANGetHcan1RxMsgCount();
-..\CUBOT\Cubot_devices\nx16.c(624): warning:  #550-D: variable "nx16_init_flag"  was set but never used
-  static uint8_t nx16_init_flag = 0; 
-..\CUBOT\Cubot_devices\nx16.c(626): warning:  #177-D: variable "nx16_daemon_instance"  was declared but never referenced
-  static DaemonInstance *nx16_daemon_instance;
-..\CUBOT\Cubot_devices\nx16.c(627): warning:  #177-D: variable "incoming_cmd"  was declared but never referenced
-  static uint8_t incoming_cmd = 0;
-..\CUBOT\Cubot_devices\nx16.c(633): warning:  #177-D: function "NX_to_sbus"  was declared but never referenced
-  static void NX_to_sbus(const uint8_t *sbus_buf) 
-..\CUBOT\Cubot_devices\nx16.c: 14 warnings, 0 errors
-compiling chassis.c...
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-../CUBOT/Cubot_algorithm/pid.h(158): warning:  #1-D: last line of file ends without a newline
+compiling pid.c...
+..\CUBOT\Cubot_algorithm\pid.h(158): warning:  #1-D: last line of file ends without a newline
   #endif
-..\CUBOT\Cubot_modules\chassis.c: 7 warnings, 0 errors
-compiling main.c...
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-../Src/main.c: 6 warnings, 0 errors
-compiling path_tracker.c...
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-path_tracker.c(283): warning:  #1035-D: single-precision operand implicitly converted to double-precision
-      cmd.vx_cmd = FloatClamp(last_cmd_vx, -
-AX_V, 
-AX_V) * 1e3;
-path_tracker.c(284): warning:  #1035-D: single-precision operand implicitly converted to double-precision
-      cmd.vy_cmd = FloatClamp(last_cmd_vy, -
-AX_V, 
-AX_V) * 1e3;
-path_tracker.c(285): warning:  #1035-D: single-precision operand implicitly converted to double-precision
-      cmd.wz_cmd = FloatClamp(last_cmd_wz, -
-AX_W, 
-AX_W) * 1e3;
-path_tracker.c(44): warning:  #550-D: variable "is_finished"  was set but never used
-  static bool  is_finished = false;
-path_tracker.c(47): warning:  #550-D: variable "obs_detected"  was set but never used
-  static bool  obs_detected = false;
-path_tracker.c(83): warning:  #177-D: function "asPt"  was declared but never referenced
-  static TrajectoryPoint_t asPt(TrajectoryPoint_t* pts, size_t size, int idx) {
-path_tracker.c: 12 warnings, 0 errors
-compiling odom_xdrive.c...
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-..\CUBOT\Cubot_devices\odom_xdrive.c: 6 warnings, 0 errors
-compiling hardware_config.c...
-../CUBOT/Cubot_devices/flysky_sbus.h(116): warning:  #1295-D: Deprecated declaration RemoteControlIsOnline - give arg types
-  uint8_t RemoteControlIsOnline();
-../CUBOT/Cubot_driver/drv_init.h(20): warning:  #1295-D: Deprecated declaration BSPInit - give arg types
-  void BSPInit();
-../CUBOT/Cubot_devices_Motor/motor_task.h(22): warning:  #1295-D: Deprecated declaration MotorControlTask - give arg types
-  void MotorControlTask();
-../CUBOT/Cubot_devices_daemon/daemon.h(60): warning:  #1295-D: Deprecated declaration DaemonTask - give arg types
-  void DaemonTask();
-../CUBOT/Cubot_devices/nx16.h(59): warning:  #1295-D: Deprecated declaration GetNx16_Switch_mode - give arg types
-  Nx16SwitchMode_t GetNx16_Switch_mode();
-../CUBOT/Cubot_devices/nx16.h(148): warning:  #1295-D: Deprecated declaration Nx16ControlIsOnline - give arg types
-  uint8_t Nx16ControlIsOnline();
-..\CUBOT\Cubot_User_Config\hardware_config.c: 6 warnings, 0 errors
+..\CUBOT\Cubot_algorithm\pid.c: 1 warning, 0 errors
 linking...
-Program Size: Code=40544 RO-data=660 RW-data=880 ZI-data=85312  
+Program Size: Code=40672 RO-data=660 RW-data=880 ZI-data=85312  
 FromELF: creating hex file...
-"work_Zxj\work_Zxj.axf" - 0 Error(s), 62 Warning(s).
+"work_Zxj\work_Zxj.axf" - 0 Error(s), 1 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -197,7 +57,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE@6.2.0
-Build Time Elapsed:  00:00:05
+Build Time Elapsed:  00:00:02
 </pre>
 </body>
 </html>

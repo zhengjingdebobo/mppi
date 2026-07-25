@@ -829,14 +829,18 @@ class CarController:
             self.listener_error = self.listener_error or "serial not connected"
             return False
 
-        legacy_cmd = self.CMD_ROTATE_CCW if turn_left else self.CMD_ROTATE_CW
+        # 注意：STM32 端 CHASSIS_ROTATE_LEFT(0) / RIGHT(1) 的方向定义与
+        # 实车电机接线方向相反。此处有意反转：左转发 RIGHT，右转发 LEFT。
+        legacy_cmd = self.CMD_ROTATE_CW if turn_left else self.CMD_ROTATE_CCW
         _, start_yaw = self.get_odom_state()
         self._prepare_blocking_command(legacy_cmd)
-        if not self._send_command_v2(self.CMD2_ROTATE_IN_PLACE, 0.0 if turn_left else 1.0, abs(angle_deg)):
+        if not self._send_command_v2(self.CMD2_ROTATE_IN_PLACE, 1.0 if turn_left else 0.0, abs(angle_deg)):
             self._clear_pending_command()
             return False
 
-        signed_angle = abs(angle_deg) if turn_left else -abs(angle_deg)
+        # signed_angle 控制 _wait_for_rotate_feedback 的预期方向：
+        # 左转 → yaw 减小（实车表现），传负值；右转 → yaw 增大，传正值
+        signed_angle = -abs(angle_deg) if turn_left else abs(angle_deg)
         success = self._wait_for_rotate_feedback(start_yaw, signed_angle, timeout)
         if not success:
             self.stop_v2()

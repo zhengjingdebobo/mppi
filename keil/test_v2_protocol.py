@@ -1,292 +1,315 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+V2 串口协议底盘控制测试脚本
+=============================
 
-V2 串口协议联调脚本。
-python keil/test_v2_protocol.py --port COM12 --baudrate 9600
-用途：
-1. 验证 STM32 是否能正确接收新的 16 字节 V2 命令帧
-2. 验证底盘前进、停止、定距离位移、原地旋转这些基础动作
-3. 为实车联调提供一套最小可复现的测试顺序
+用法:
+  # 默认完整测试（速度→定距→旋转）
+  python test_v2_protocol.py --port COM12
 
-默认测试顺序：
-1. V2 初始化
-2. 发送一次心跳
-3. 持续速度前进一小段时间
-4. 停车
-5. 定距离前进
-6. 原地左转
+  # 仅测试旋转（调 PID 最常用）
+  python test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
 
-注意：
-- 首次联调建议将车架空，或者在空旷区域低速测试
-- 测试过程中不要推动遥控器摇杆，否则会覆盖 API 控制
-- 本脚本依赖 keil/car_controlst.py 中已经实现的 V2 发包接口
+  # 仅测试旋转：右转 90 度
+  python test_v2_protocol.py --port COM12 --only rotate --rotate-right --rotate-angle 90
+
+  # 电机死区测试：100~800 RPM，步进 50，自动找到起转点
+  python test_v2_protocol.py --port COM12 --only deadzone
+
+  # 电机死区测试：自定义范围和步进
+  python test_v2_protocol.py --port COM12 --only deadzone --rpm-start 50 --rpm-stop 600 --rpm-step 25
+
+  # 仅测试定角度速度控制（持续前进）
+  python test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1 --speed-duration 3
+
+  # 仅测试定距离位移
+  python test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
+
+  # 自定义串口和波特率
+  python test_v2_protocol.py --port /dev/ttyUSB0 --baudrate 115200 --only rotate --rotate-angle 90
+
+  # 详细输出（打印完整调试信息，用于排查问题）
+  python test_v2_protocol.py --port COM12 --verbose
+
+参数说明:
+  --port            串口号，Windows 如 COM12，Linux 如 /dev/ttyUSB0
+  --baudrate        波特率，默认 9600
+  --only            只运行指定测试: all | speed | distance | rotate | deadzone
+  --speed-angle     速度测试方向角（度），0=前 90=左 180=后 270=右
+  --speed-mps       速度测试目标速度（m/s），默认 0.05
+  --speed-duration  速度测试持续时间（秒），默认 1.0
+  --distance-angle  定距测试方向角（度）
+  --distance-m      定距测试距离（米），默认 0.2
+  --rotate-left     旋转测试左转（默认）
+  --rotate-right    旋转测试右转
+  --rotate-angle    旋转角度（度），默认 30
+  --rotate-timeout  旋转超时（秒），默认 8
+  --rpm-start       死区测试起始 RPM（默认 100）
+  --rpm-stop        死区测试终止 RPM（默认 800）
+  --rpm-step        死区测试步进 RPM（默认 50）
+  --rpm-duration    每档 RPM 持续时间秒（默认 0.4）
+  --settle          步骤间等待（秒），默认 0.8
+  --verbose         详细输出所有调试字段
 """
 
 import argparse
 import sys
-import threading
 import time
 
 from car_controlst import CarController
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """构建命令行参数解析器。"""
-    parser = argparse.ArgumentParser(description="V2 串口协议联调脚本")
-    parser.add_argument("--port", default="COM12", help="串口号，例如 COM12 或 /dev/ttyUSB0")
-    parser.add_argument("--baudrate", type=int, default=9600, help="串口波特率，默认 9600")
+    parser = argparse.ArgumentParser(
+        description="V2 串口协议底盘控制测试",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
+  python test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1
+  python test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
+        """,
+    )
+    parser.add_argument("--port", default="COM12", help="串口号，默认 COM12")
+    parser.add_argument("--baudrate", type=int, default=9600, help="波特率，默认 9600")
     parser.add_argument(
         "--only",
-        choices=("all", "speed", "distance", "rotate", "preflight"),
+        choices=("all", "speed", "distance", "rotate", "deadzone"),
         default="all",
-        help="只运行指定测试；preflight 仅检查通信和反馈，默认 all",
+        help="只运行指定测试: all | speed | distance | rotate | deadzone",
     )
-    parser.add_argument("--speed-angle", type=float, default=0.0, help="持续速度测试的方向角，0=前，90=左")
-    parser.add_argument("--speed-mps", type=float, default=0.05, help="持续速度测试速度，单位 m/s")
-    parser.add_argument("--speed-duration", type=float, default=1.0, help="持续速度测试时长，单位 s")
-    parser.add_argument("--distance-angle", type=float, default=0.0, help="定距离测试方向角，0=前，90=左")
-    parser.add_argument("--distance-m", type=float, default=0.20, help="定距离测试距离，单位 m")
-    parser.add_argument("--distance-timeout", type=float, default=8.0, help="定距离测试超时，单位 s")
-    parser.add_argument("--rotate-left", action="store_true", default=True, help="旋转测试使用左转")
-    parser.add_argument("--rotate-right", action="store_true", help="旋转测试使用右转")
-    parser.add_argument("--rotate-angle", type=float, default=30.0, help="旋转测试角度，单位 度")
-    parser.add_argument("--rotate-timeout", type=float, default=6.0, help="旋转测试超时，单位 s")
-    parser.add_argument("--settle", type=float, default=1.0, help="各步骤之间的等待时间，单位 s")
+    parser.add_argument("--speed-angle", type=float, default=0.0, help="速度测试方向角（度）")
+    parser.add_argument("--speed-mps", type=float, default=0.05, help="速度测试目标速度 m/s")
+    parser.add_argument("--speed-duration", type=float, default=1.0, help="速度测试持续时间 s")
+    parser.add_argument("--distance-angle", type=float, default=0.0, help="定距测试方向角（度）")
+    parser.add_argument("--distance-m", type=float, default=0.20, help="定距测试距离 m")
+    parser.add_argument("--distance-timeout", type=float, default=8.0, help="定距测试超时 s")
+    parser.add_argument("--rotate-left", action="store_true", default=True, help="左转（默认）")
+    parser.add_argument("--rotate-right", action="store_true", help="右转")
+    parser.add_argument("--rotate-angle", type=float, default=30.0, help="旋转角度（度）")
+    parser.add_argument("--rotate-timeout", type=float, default=8.0, help="旋转超时 s")
+    parser.add_argument("--rpm-start", type=int, default=100, help="死区测试起始 RPM")
+    parser.add_argument("--rpm-stop", type=int, default=800, help="死区测试终止 RPM")
+    parser.add_argument("--rpm-step", type=int, default=50, help="死区测试步进 RPM")
+    parser.add_argument("--rpm-duration", type=float, default=0.4, help="每档 RPM 持续时间 s")
+    parser.add_argument("--settle", type=float, default=0.8, help="步骤间等待时间 s")
+    parser.add_argument("--verbose", action="store_true", help="详细输出所有调试字段")
     return parser
 
 
-def print_step(title: str) -> None:
-    """打印步骤标题，方便串口联调时观察执行进度。"""
-    print()
-    print("=" * 60)
-    print(title)
-    print("=" * 60)
+# ---------------------------------------------------------------------------
+# 简洁状态输出
+# ---------------------------------------------------------------------------
 
-
-def print_pose(car: CarController, tag: str) -> None:
-    """打印当前里程计和 IMU 关键状态。"""
+def print_state(car: CarController, tag: str = "", verbose: bool = False) -> None:
+    """打印关键状态：位置、航向、任务状态。verbose=True 时额外输出调试字段。"""
     odom, yaw = car.get_odom_state()
     imu = car.get_last_imu()
-    vesc = car.get_last_vesc_feedback()
+    status_text = _status_name(car.current_status)
 
-    print(f"{tag}:")
-    print(f"  里程计位置: x={odom[0]:.4f} m, y={odom[1]:.4f} m")
-    print(f"  STATUS yaw_total: {yaw:.2f} deg")
-    if imu:
-        print(f"  IMU yaw_total: {imu.get('yaw_total_deg', 0.0):.2f} deg")
-        print(f"  IMU yaw: {imu.get('yaw_deg', 0.0):.2f} deg")
-        print(
-            f"  IMU gyro_z: {imu.get('gyro_z_dps', 0.0):.2f} dps, "
-            f"acc=({imu.get('acc_x_g', 0.0):.3f}, {imu.get('acc_y_g', 0.0):.3f}, {imu.get('acc_z_g', 0.0):.3f})"
-        )
-    else:
-        print("  IMU 数据: 当前尚未收到")
+    header = f"[{tag}]" if tag else ""
+    imu_yaw = imu.get("yaw_total_deg", 0.0) if imu else 0.0
+    print(f"{header} x={odom[0]:.4f}  y={odom[1]:.4f}  "
+          f"yaw(odom)={yaw:.2f}  yaw(imu)={imu_yaw:.2f}  "
+          f"status={status_text}  in_task={car.debug_cmd_vel_true[2]:.0f}")
 
-    # 这些字段用于判断：命令有没有被 STM32 接收、是否进入执行态、是否被中途清掉。
-    print(f"  current_status: {car.current_status}")
-    print(f"  last_feedback_cmd_id: {car.last_feedback_cmd_id}")
-    print(f"  pending_command_id: {car.pending_command_id}")
-    print(f"  pending_command_started: {car.pending_command_started}")
-    print(
-        "  debug_cmd_vel: "
-        f"vx={car.debug_cmd_vel[0]:.4f}, "
-        f"vy={car.debug_cmd_vel[1]:.4f}, "
-        f"wz={car.debug_cmd_vel[2]:.4f}"
-    )
-    print(
-        "  wheel_target_vs_vesc_cache(status_frame): "
-        f"LF=({car.debug_motro_vel[0]:.1f}, {car.debug_motro_vel[1]:.1f}), "
-        f"RF=({car.debug_motro_vel[2]:.1f}, {car.debug_motro_vel[3]:.1f}), "
-        f"LB=({car.debug_motro_vel[4]:.1f}, {car.debug_motro_vel[5]:.1f}), "
-        f"RB=({car.debug_motro_vel[6]:.1f}, {car.debug_motro_vel[7]:.1f})"
-    )
-    print(
-        "  vesc_can_diag: "
-        f"fifo0_cb={int(car.vesc_can_diag[0])}, "
-        f"fifo1_cb={int(car.vesc_can_diag[1])}, "
-        f"can1_rx={int(car.vesc_can_diag[2])}, "
-        f"vesc_rx={int(car.vesc_can_diag[3])}, "
-        f"last_ext_id=0x{int(car.vesc_can_diag[4]):X}"
-    )
-    print(
-        "  status_extra: "
-        f"can1_rx={car.debug_cmd_vel_true[0]:.0f}, "
-        f"vesc_rx={car.debug_cmd_vel_true[1]:.0f}, "
-        f"in_task={car.debug_cmd_vel_true[2]:.0f}"
-    )
-    print(
-        "  vesc_feedback(frame): "
-        f"LF=(erpm={vesc.get('lf_erpm', 0)}, duty={vesc.get('lf_duty', 0.0):.3f}, on={vesc.get('lf_online', 0)}), "
-        f"RF=(erpm={vesc.get('rf_erpm', 0)}, duty={vesc.get('rf_duty', 0.0):.3f}, on={vesc.get('rf_online', 0)}), "
-        f"LB=(erpm={vesc.get('lb_erpm', 0)}, duty={vesc.get('lb_duty', 0.0):.3f}, on={vesc.get('lb_online', 0)}), "
-        f"RB=(erpm={vesc.get('rb_erpm', 0)}, duty={vesc.get('rb_duty', 0.0):.3f}, on={vesc.get('rb_online', 0)})"
-    )
-
-
-def snapshot_after_send(car: CarController, title_prefix: str, delays: list[float]) -> None:
-    """命令下发后按多个时间点打印快照，用于观察状态是否短暂进入执行态。"""
-    elapsed = 0.0
-    for delay in delays:
-        wait_time = max(0.0, delay - elapsed)
-        if wait_time > 0.0:
-            time.sleep(wait_time)
-        elapsed = delay
-        print_pose(car, f"{title_prefix} @ {delay:.2f}s")
-
-
-def run_blocking_with_snapshots(car: CarController, title_prefix: str, action, timeout: float) -> bool:
-    """在任务等待线程运行闭环命令，同时由主线程采集运动中的状态快照。"""
-    result: dict[str, object] = {"ok": False, "error": None}
-
-    def worker() -> None:
-        try:
-            result["ok"] = bool(action())
-        except Exception as exc:
-            result["error"] = exc
-
-    thread = threading.Thread(target=worker, name="v2-test-action", daemon=True)
-    thread.start()
-    snapshot_after_send(car, title_prefix, [0.10, 0.30, 0.80])
-    thread.join(max(0.0, timeout + 1.0))
-
-    if thread.is_alive():
-        raise RuntimeError(f"{title_prefix} 等待线程未在超时后退出")
-    if result["error"] is not None:
-        raise result["error"]
-    return bool(result["ok"])
-
-
-def require_ok(ok: bool, step_name: str, car: CarController) -> None:
-    """统一处理步骤失败的情况。"""
-    if ok:
-        print(f"{step_name}: 成功")
+    if not verbose:
         return
 
-    listener_error = car.listener_error or "未知错误或等待超时"
-    raise RuntimeError(f"{step_name} 失败: {listener_error}")
+    # 详细调试输出
+    vesc = car.get_last_vesc_feedback()
+    if imu:
+        print(f"  IMU: gyro_z={imu.get('gyro_z_dps', 0):.2f} dps  "
+              f"acc=({imu.get('acc_x_g', 0):.3f},{imu.get('acc_y_g', 0):.3f},{imu.get('acc_z_g', 0):.3f})")
+    print(f"  cmd_vel: vx={car.debug_cmd_vel[0]:.2f} vy={car.debug_cmd_vel[1]:.2f} wz={car.debug_cmd_vel[2]:.2f}")
+    print(f"  wheels: LF(ref={car.debug_motro_vel[0]:.0f} fdb={car.debug_motro_vel[1]:.0f})  "
+          f"RF(ref={car.debug_motro_vel[2]:.0f} fdb={car.debug_motro_vel[3]:.0f})  "
+          f"LB(ref={car.debug_motro_vel[4]:.0f} fdb={car.debug_motro_vel[5]:.0f})  "
+          f"RB(ref={car.debug_motro_vel[6]:.0f} fdb={car.debug_motro_vel[7]:.0f})")
+    print(f"  VESC: LF(erpm={vesc.get('lf_erpm', 0)} on={vesc.get('lf_online', 0)})  "
+          f"RF(erpm={vesc.get('rf_erpm', 0)} on={vesc.get('rf_online', 0)})  "
+          f"LB(erpm={vesc.get('lb_erpm', 0)} on={vesc.get('lb_online', 0)})  "
+          f"RB(erpm={vesc.get('rb_erpm', 0)} on={vesc.get('rb_online', 0)})")
+    print(f"  pending_cmd={car.pending_command_id}  last_fdb_cmd={car.last_feedback_cmd_id}")
 
+
+def _status_name(status: int) -> str:
+    names = {0: "IDLE", 1: "EXEC", 2: "SUCCESS", 3: "FAILED"}
+    return names.get(status, f"UNKNOWN({status})")
+
+
+def _require_ok(ok: bool, step_name: str) -> None:
+    if ok:
+        print(f"  ✓ {step_name}")
+    else:
+        print(f"  ✗ {step_name} 失败")
+        raise RuntimeError(f"{step_name} 失败")
+
+
+# ---------------------------------------------------------------------------
+# 电机死区测试
+# ---------------------------------------------------------------------------
+
+# 轮子目标 RPM → 前向速度 m/s 的换算系数
+# RPM = speed_mps / VESC_WHEEL_MPS_PER_ERPM * inv_sqrt2
+#     = speed_mps / 4.24e-5 * 0.707
+# → speed_mps = RPM * 4.24e-5 / 0.707
+_RPM_TO_MPS = 4.24e-5 / 0.70710678
+
+
+def _read_vesc_erpm(car: CarController) -> tuple:
+    """读取四个轮子的反馈 ERPM（逻辑值，带方向修正）。"""
+    # debug_motro_vel: [lf_ref, lf_fdb, rf_ref, rf_fdb, lb_ref, lb_fdb, rb_ref, rb_fdb]
+    return (
+        car.debug_motro_vel[1],  # lf_fdb
+        car.debug_motro_vel[3],  # rf_fdb
+        car.debug_motro_vel[5],  # lb_fdb
+        car.debug_motro_vel[7],  # rb_fdb
+    )
+
+
+def run_deadzone_test(car: CarController, args) -> None:
+    """逐步递增 RPM，观察 VESC 反馈，找到电机死区。"""
+    rpm_start = max(20, args.rpm_start)
+    rpm_stop = max(rpm_start + 50, args.rpm_stop)
+    rpm_step = max(10, args.rpm_step)
+    duration = max(0.2, args.rpm_duration)
+
+    print(f"死区测试: {rpm_start} → {rpm_stop} RPM, 步进 {rpm_step}, 每档 {duration:.1f}s")
+    print(f"{'目标RPM':>8s}  {'speed_mps':>10s}  "
+          f"{'LF(fdb)':>8s}  {'RF(fdb)':>8s}  {'LB(fdb)':>8s}  {'RB(fdb)':>8s}  "
+          f"{'最大|fdb|':>10s}  {'判定':>6s}")
+    print("-" * 90)
+
+    first_moving_rpm = None
+
+    for rpm in range(rpm_start, rpm_stop + rpm_step, rpm_step):
+        speed_mps = rpm * _RPM_TO_MPS
+
+        # 发送前向速度命令
+        car.stop_v2()
+        time.sleep(0.08)
+        car.move_with_angle_speed(0.0, speed_mps)
+        time.sleep(duration)
+
+        # 读取反馈
+        lf, rf, lb, rb = _read_vesc_erpm(car)
+        max_abs_fdb = max(abs(lf), abs(rf), abs(lb), abs(rb))
+
+        # 判定：至少一个轮子的反馈达到目标的 60%
+        threshold = rpm * 0.60
+        moving = max_abs_fdb >= threshold
+        if moving and first_moving_rpm is None:
+            first_moving_rpm = rpm
+
+        mark = "← 起转" if moving and first_moving_rpm == rpm else ("✓" if moving else "✗")
+        print(f"{rpm:>8d}  {speed_mps:>10.6f}  "
+              f"{lf:>8.0f}  {rf:>8.0f}  {lb:>8.0f}  {rb:>8.0f}  "
+              f"{max_abs_fdb:>10.0f}  {mark:>6s}")
+
+    car.stop_v2()
+    time.sleep(0.3)
+
+    print()
+    if first_moving_rpm is not None:
+        print(f"→ 电机死区约 {first_moving_rpm} RPM")
+        print(f"  换算为 chassis_wz 死区分量: {first_moving_rpm / (8.05 * 1.06):.0f}")
+    else:
+        print(f"→ 在 {rpm_stop} RPM 范围内未检测到起转，请增大 --rpm-stop")
+    print(f"  建议 ROTATE_DEADZONE_OFFSET 设为起转 RPM 的 70~80% ≈ "
+          f"{int(first_moving_rpm * 0.75) if first_moving_rpm else '?'}")
+
+
+# ---------------------------------------------------------------------------
+# 主测试流程
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     args = build_arg_parser().parse_args()
-
-    # `--rotate-right` 优先级高于默认左转。
     rotate_left = not args.rotate_right
+    verbose = args.verbose
 
     car = CarController(port=args.port, baudrate=args.baudrate)
 
     try:
-        print_step("连接串口")
+        # ---- 连接 ----
+        print(f"连接 {args.port} @ {args.baudrate} ...")
         if not car.connect():
             raise RuntimeError(f"串口连接失败: {car.listener_error or '未知错误'}")
-        print(f"已连接 {args.port} @ {args.baudrate}")
-
+        print(f"已连接, settle {args.settle}s ...")
         time.sleep(args.settle)
-        print_pose(car, "初始状态")
+        print_state(car, "初始", verbose)
 
-        print_step("步骤 1: V2 初始化")
-        require_ok(car.initialize_car_v2(), "V2 初始化", car)
+        # ---- 初始化 ----
+        print("\n── V2 初始化 ──")
+        _require_ok(car.initialize_car_v2(), "初始化")
         time.sleep(args.settle)
-        print_pose(car, "初始化后状态")
 
-        print_step("步骤 2: V2 心跳")
-        require_ok(car.send_heartbeat_v2(), "V2 心跳", car)
-        time.sleep(args.settle)
-        print_pose(car, "心跳后状态")
+        # ---- 死区测试 ----
+        if args.only == "deadzone":
+            run_deadzone_test(car, args)
+            car.stop_v2()
+            time.sleep(0.3)
+            print("\n测试完成。")
+            return 0
 
+        # ---- 速度测试 ----
         if args.only in ("all", "speed"):
-            print_step("步骤 3: 持续速度运动")
-            print(
-                f"下发: angle={args.speed_angle:.2f} deg, "
-                f"speed={args.speed_mps:.3f} m/s, duration={args.speed_duration:.2f} s"
-            )
-            require_ok(
+            print(f"\n── 持续速度: angle={args.speed_angle:.1f}°  speed={args.speed_mps:.3f} m/s  "
+                  f"持续 {args.speed_duration:.1f}s ──")
+            _require_ok(
                 car.move_with_angle_speed(args.speed_angle, args.speed_mps),
-                "持续速度命令下发",
-                car,
+                "速度命令下发",
             )
-            snapshot_after_send(car, "持续速度命令后状态", [0.10, 0.30, 0.80])
-            remaining_speed_window = max(0.0, args.speed_duration - 0.80)
-            if remaining_speed_window > 0.0:
-                time.sleep(remaining_speed_window)
+            time.sleep(0.15)
+            print_state(car, "运动中", verbose)
+            time.sleep(max(0.0, args.speed_duration - 0.15))
             car.stop_v2()
             time.sleep(args.settle)
-            print_pose(car, "持续速度测试后状态")
+            print_state(car, "速度测试后", verbose)
 
+        # ---- 定距离位移 ----
         if args.only in ("all", "distance"):
-            print_step("步骤 4: 定距离位移")
-            print(
-                f"下发: angle={args.distance_angle:.2f} deg, "
-                f"distance={args.distance_m:.3f} m, timeout={args.distance_timeout:.2f} s"
+            print(f"\n── 定距离位移: angle={args.distance_angle:.1f}°  "
+                  f"distance={args.distance_m:.3f} m ──")
+            ok = car.move_with_angle_distance(
+                args.distance_angle, args.distance_m, timeout=args.distance_timeout,
             )
-            distance_start = time.time()
-            distance_ok = run_blocking_with_snapshots(
-                car,
-                "定距离命令后状态",
-                lambda: car.move_with_angle_distance(
-                    args.distance_angle,
-                    args.distance_m,
-                    timeout=args.distance_timeout,
-                ),
-                args.distance_timeout,
-            )
-            if not distance_ok:
-                elapsed_distance = time.time() - distance_start
-                print_pose(car, f"定距离超时前最终状态 @ {elapsed_distance:.2f}s")
-                require_ok(distance_ok, "定距离位移", car)
+            _require_ok(ok, "定距离位移")
             time.sleep(args.settle)
-            print_pose(car, "定距离位移后状态")
+            print_state(car, "定距后", verbose)
 
+        # ---- 原地旋转 ----
         if args.only in ("all", "rotate"):
-            print_step("步骤 5: 原地旋转")
             direction_text = "左转" if rotate_left else "右转"
-            print(
-                f"下发: {direction_text}, angle={args.rotate_angle:.2f} deg, "
-                f"timeout={args.rotate_timeout:.2f} s"
+            print(f"\n── 原地旋转: {direction_text} {args.rotate_angle:.1f}° ──")
+            ok = car.rotate_in_place_v2(
+                rotate_left, args.rotate_angle, timeout=args.rotate_timeout,
             )
-            rotate_ok = run_blocking_with_snapshots(
-                car,
-                "原地旋转命令后状态",
-                lambda: car.rotate_in_place_v2(
-                    rotate_left,
-                    args.rotate_angle,
-                    timeout=args.rotate_timeout,
-                ),
-                args.rotate_timeout,
-            )
-            require_ok(rotate_ok, "原地旋转", car)
+            _require_ok(ok, "原地旋转")
             time.sleep(args.settle)
-            print_pose(car, "旋转后状态")
+            print_state(car, "旋转后", verbose)
 
-        print_step("步骤 6: 最终停止")
+        # ---- 最终停止 ----
         car.stop_v2()
-        time.sleep(args.settle)
-        print_pose(car, "最终状态")
-
-        print()
-        print("测试完成。")
-        print("建议对照串口接收窗口继续观察：")
-        print("  1. STATUS yaw_total 是否与 IMU yaw_total 一致")
-        print("  2. 定距离任务结束后 remain 是否收敛")
-        print("  3. 旋转时 yaw_total 是否连续变化")
+        time.sleep(0.3)
+        print_state(car, "最终", verbose)
+        print("\n测试完成。")
         return 0
 
     except KeyboardInterrupt:
-        print()
-        print("用户中断，执行停车。")
+        print("\n用户中断。")
         try:
             car.stop_v2()
-            time.sleep(0.5)
         except Exception:
             pass
-        return 130
+        return 0
 
     except Exception as exc:
-        print()
-        print(f"测试失败: {exc}", file=sys.stderr)
+        print(f"\n测试失败: {exc}", file=sys.stderr)
         try:
             car.stop_v2()
-            time.sleep(0.5)
         except Exception:
             pass
         return 1

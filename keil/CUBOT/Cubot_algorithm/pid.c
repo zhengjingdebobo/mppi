@@ -32,8 +32,8 @@ One_PID_Para_t  Chassis_follow_pid  =
 {
 		.shell=
 	{
-		.shell_P = 78,
-		.shell_I = 0.8,
+		.shell_P = 175,//175
+		.shell_I = 0.5,
 		.shell_D = 0,
 
 		

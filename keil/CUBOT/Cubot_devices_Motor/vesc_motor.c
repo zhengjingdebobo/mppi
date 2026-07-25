@@ -238,8 +238,10 @@ void VESCMotorSetRPM(uint8_t vesc_id, int32_t rpm)
     }
 }
 
+
 void VESCMotorSetFourRPM(int32_t lf_rpm, int32_t rf_rpm, int32_t rb_rpm, int32_t lb_rpm)
 {
+
     VESCMotorSetLogicalRPM(VESC_WHEEL_LF, lf_rpm);
     VESCMotorSetLogicalRPM(VESC_WHEEL_RF, rf_rpm);
     VESCMotorSetLogicalRPM(VESC_WHEEL_RB, rb_rpm);
