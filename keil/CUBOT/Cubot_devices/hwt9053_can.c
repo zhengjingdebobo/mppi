@@ -24,6 +24,10 @@ static float hwt9053_yaw_prev_deg;
 static uint8_t hwt9053_yaw_prev_valid;
 static float hwt9053_yaw_zero_total;
 static uint8_t hwt9053_yaw_zero_valid;
+static float hwt9053_control_yaw_total_deg;
+static float hwt9053_control_gyro_prev_dps;
+static uint32_t hwt9053_control_gyro_tick;
+static uint8_t hwt9053_control_gyro_valid;
 
 static HAL_StatusTypeDef HWT9053CAN_WriteReg(uint8_t reg, uint16_t value)
 {
@@ -202,6 +206,10 @@ void HWT9053CAN_ProbeInit(void)
     hwt9053_yaw_prev_valid = 0u;
     hwt9053_yaw_zero_total = 0.0f;
     hwt9053_yaw_zero_valid = 0u;
+    hwt9053_control_yaw_total_deg = 0.0f;
+    hwt9053_control_gyro_prev_dps = 0.0f;
+    hwt9053_control_gyro_tick = 0u;
+    hwt9053_control_gyro_valid = 0u;
     hwt9053_can.init_count++;
 
     filter.FilterActivation = ENABLE;
@@ -231,6 +239,11 @@ void HWT9053CAN_ProbeInit(void)
 
 void HWT9053CAN_SetYawZero(void)
 {
+    hwt9053_control_yaw_total_deg = 0.0f;
+    hwt9053_control_gyro_prev_dps = 0.0f;
+    hwt9053_control_gyro_tick = HAL_GetTick();
+    hwt9053_control_gyro_valid = 0u;
+
     if (!hwt9053_yaw_prev_valid)
     {
         hwt9053_yaw_zero_valid = 0u;
@@ -249,9 +262,10 @@ void HWT9053CAN_SetYawZero(void)
 uint8_t HWT9053CAN_IsOnline(void)
 {
     uint32_t now = HAL_GetTick();
-    return (hwt9053_can.valid_count > 0u &&
-            hwt9053_can.yaw_count > 0u &&
-            (now - hwt9053_can.last_tick) < 200u) ? 1u : 0u;
+    return (hwt9053_can.yaw_count > 0u &&
+            hwt9053_can.gyro_count > 0u &&
+            (now - hwt9053_can.last_yaw_tick) < 200u &&
+            (now - hwt9053_can.last_gyro_tick) < 200u) ? 1u : 0u;
 }
 
 uint8_t HWT9053CAN_GetHeading(HWT9053Heading_t *heading)
@@ -266,12 +280,14 @@ uint8_t HWT9053CAN_GetHeading(HWT9053Heading_t *heading)
 
     for (retry = 0u; retry < 3u; retry++)
     {
-        count_before = hwt9053_can.yaw_count;
-        heading->yaw_deg = hwt9053_can.yaw_zxj * HWT9053_CONTROL_YAW_SIGN;
-        heading->yaw_total_deg = hwt9053_can.yaw_total_zxj * HWT9053_CONTROL_YAW_SIGN;
+        count_before = hwt9053_can.gyro_count;
+        heading->yaw_deg = HWT9053_WrapDeg180(hwt9053_control_yaw_total_deg) *
+                           HWT9053_CONTROL_YAW_SIGN;
+        heading->yaw_total_deg = hwt9053_control_yaw_total_deg *
+                                 HWT9053_CONTROL_YAW_SIGN;
         heading->gyro_z_dps = hwt9053_can.gyro_dps[2] * HWT9053_CONTROL_YAW_SIGN;
-        heading->last_tick = hwt9053_can.last_tick;
-        count_after = hwt9053_can.yaw_count;
+        heading->last_tick = hwt9053_can.last_gyro_tick;
+        count_after = hwt9053_can.gyro_count;
         if (count_before == count_after)
         {
             heading->sample_count = count_after;
@@ -370,6 +386,9 @@ void HWT9053CAN_RecordRaw(CAN_HandleTypeDef *hcan,
         break;
 
     case HWT9053_CAN_TYPE_GYRO:
+    {
+        uint32_t gyro_tick = HAL_GetTick();
+        float gyro_z_new;
         hwt9053_can.gyro_count++;
         hwt9053_can.gyro_raw[0] = HWT9053_GetInt16(data, 2);
         hwt9053_can.gyro_raw[1] = HWT9053_GetInt16(data, 4);
@@ -377,7 +396,23 @@ void HWT9053CAN_RecordRaw(CAN_HandleTypeDef *hcan,
         hwt9053_can.gyro_dps[0] = (float)hwt9053_can.gyro_raw[0] / 32768.0f * 2000.0f;
         hwt9053_can.gyro_dps[1] = (float)hwt9053_can.gyro_raw[1] / 32768.0f * 2000.0f;
         hwt9053_can.gyro_dps[2] = (float)hwt9053_can.gyro_raw[2] / 32768.0f * 2000.0f;
+        gyro_z_new = hwt9053_can.gyro_dps[2];
+
+        if (hwt9053_control_gyro_valid)
+        {
+            float dt = (float)(gyro_tick - hwt9053_control_gyro_tick) * 0.001f;
+            if (dt > 0.0f && dt <= 0.05f)
+            {
+                hwt9053_control_yaw_total_deg +=
+                    0.5f * (hwt9053_control_gyro_prev_dps + gyro_z_new) * dt;
+            }
+        }
+        hwt9053_control_gyro_prev_dps = gyro_z_new;
+        hwt9053_control_gyro_tick = gyro_tick;
+        hwt9053_control_gyro_valid = 1u;
+        hwt9053_can.last_gyro_tick = gyro_tick;
         break;
+    }
 
     case HWT9053_CAN_TYPE_ANGLE:
         hwt9053_can.angle_count++;
@@ -398,6 +433,7 @@ void HWT9053CAN_RecordRaw(CAN_HandleTypeDef *hcan,
             else
             {
                 hwt9053_can.yaw_count++;
+                hwt9053_can.last_yaw_tick = HAL_GetTick();
                 HWT9053_UpdateYaw(hwt9053_can.angle_deg[2]);
             }
         }

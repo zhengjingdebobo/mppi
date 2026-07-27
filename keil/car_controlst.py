@@ -194,7 +194,7 @@ class CarController:
                 "roll_deg", "pitch_deg", "yaw_deg", "yaw_total_deg",
                 "gyro_x_dps", "gyro_y_dps", "gyro_z_dps",
                 "acc_x_g", "acc_y_g", "acc_z_g",
-                "state", "rx_count", "valid_count", "last_error", "last_std_id", "last_ext_id", "last_ide", "last_rtr", "last_dlc", "last_type", "error_count", "hal_error_count", "acc_count", "gyro_count", "angle_count", "yaw_count", "config_attempt_count", "config_done", "config_tx_count", "config_tx_error_count", "last_config_status",
+                "state", "rx_count", "valid_count", "last_error", "last_std_id", "last_ext_id", "last_ide", "last_rtr", "last_dlc", "last_type", "error_count", "hal_error_count", "acc_count", "gyro_count", "angle_count", "yaw_count", "config_attempt_count", "config_done", "config_tx_count", "config_tx_error_count", "last_config_status", "init_count", "start_status", "notify_status", "last_tick", "online", "fifo0_level", "fifo1_level",
             ])
             self.imu_log_file.flush()
 
@@ -319,15 +319,6 @@ class CarController:
             return False
         return False
 
-    @staticmethod
-    def _angle_diff_deg(current_deg: float, start_deg: float) -> float:
-        diff = current_deg - start_deg
-        while diff > 180.0:
-            diff -= 360.0
-        while diff < -180.0:
-            diff += 360.0
-        return diff
-
     def _wait_for_move_feedback(self, start_odom: np.ndarray, target_distance: float, timeout: float) -> bool:
         target_distance = abs(float(target_distance))
         tolerance = max(0.02, target_distance * 0.08)
@@ -360,32 +351,9 @@ class CarController:
         if target_angle_deg == 0.0:
             return True
 
-        direction = 1.0 if target_angle_deg > 0.0 else -1.0
-        target_angle_abs = abs(float(target_angle_deg))
-        tolerance = max(2.0, target_angle_abs * 0.08)
-        reached_deadline = None
-        end_time = time.time() + timeout
-
-        while time.time() < end_time:
-            if not self.is_running or self.listener_error is not None:
-                return False
-
-            with self.lock:
-                curr_yaw = float(self.odom_yaw_deg)
-
-            delta = self._angle_diff_deg(curr_yaw, start_yaw_deg) * direction
-
-            if delta >= max(0.0, target_angle_abs - tolerance):
-                if reached_deadline is None:
-                    reached_deadline = time.time() + 0.15
-                elif time.time() >= reached_deadline:
-                    return True
-            else:
-                reached_deadline = None
-
-            time.sleep(0.02)
-
-        return False
+        # The MCU owns the angle/gyro tolerance and stable-hold decision.  Do
+        # not declare success from wrapped telemetry before the MCU settles.
+        return self._wait_blocking_command(timeout)
 
     def _listen_for_data(self):
             """docstring"""
@@ -652,6 +620,13 @@ class CarController:
             "config_tx_count": values[29],
             "config_tx_error_count": values[30],
             "last_config_status": values[31],
+            "init_count": values[32],
+            "start_status": values[33],
+            "notify_status": values[34],
+            "last_tick": values[35],
+            "online": values[36],
+            "fifo0_level": values[37],
+            "fifo1_level": values[38],
         }
 
         with self.lock:
@@ -676,6 +651,8 @@ class CarController:
                     imu["acc_count"], imu["gyro_count"], imu["angle_count"], imu["yaw_count"],
                     imu["config_attempt_count"], imu["config_done"],
                     imu["config_tx_count"], imu["config_tx_error_count"], imu["last_config_status"],
+                    imu["init_count"], imu["start_status"], imu["notify_status"],
+                    imu["last_tick"], imu["online"], imu["fifo0_level"], imu["fifo1_level"],
                 ])
                 if self.imu_frame_count % 20 == 0:
                     self.imu_log_file.flush()
@@ -829,8 +806,8 @@ class CarController:
             self.listener_error = self.listener_error or "serial not connected"
             return False
 
-        # 注意：STM32 端 CHASSIS_ROTATE_LEFT(0) / RIGHT(1) 的方向定义与
-        # 实车电机接线方向相反。此处有意反转：左转发 RIGHT，右转发 LEFT。
+        # STM32 枚举方向与当前实车安装方向相反：
+        # 左转发送 RIGHT，右转发送 LEFT，保持已经实车确认的方向。
         legacy_cmd = self.CMD_ROTATE_CW if turn_left else self.CMD_ROTATE_CCW
         _, start_yaw = self.get_odom_state()
         self._prepare_blocking_command(legacy_cmd)
@@ -838,8 +815,6 @@ class CarController:
             self._clear_pending_command()
             return False
 
-        # signed_angle 控制 _wait_for_rotate_feedback 的预期方向：
-        # 左转 → yaw 减小（实车表现），传负值；右转 → yaw 增大，传正值
         signed_angle = -abs(angle_deg) if turn_left else abs(angle_deg)
         success = self._wait_for_rotate_feedback(start_yaw, signed_angle, timeout)
         if not success:

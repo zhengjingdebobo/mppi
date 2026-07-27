@@ -1,13 +1,10 @@
 #include "nx16.h"
 #include "string.h"
 #include "drv_usart.h"
-#include "stdlib.h"
-#include "daemon.h"
-#include "drv_log.h"
+#include "drv_can.h"
 #include "chassis.h"
 #include <stdbool.h>
 #include <math.h>
-#include "cmsis_os.h" 
 #include "task.h"
 #include "hwt9053_can.h"
 #include "drv_dwt.h"
@@ -17,7 +14,6 @@
 #define NX16_CRITICAL_ENTER()  taskENTER_CRITICAL()
 #define NX16_CRITICAL_EXIT()   taskEXIT_CRITICAL()
 
-#define NX16_BUFFER_SIZE 20u 
 #define AGENT_FRAME_LENGTH_LEGACY  8u
 #define AGENT_FRAME_LENGTH_V2      16u
 #define AGENT_RX_FRAME_LENGTH_MAX  AGENT_FRAME_LENGTH_V2
@@ -57,6 +53,17 @@ static uint8_t command_id = 0;
 static uint8_t agent_v2_last_cmd = 0u;
 static uint8_t agent_v2_last_seq = 0u;
 static uint8_t agent_v2_last_valid = 0u;
+
+typedef struct
+{
+    uint8_t command_id;
+    uint8_t sequence;
+    float param1;
+    float param2;
+    volatile uint8_t valid;
+} AgentV2PendingCommand_t;
+
+static AgentV2PendingCommand_t agent_v2_pending;
 
 // 上位机数据
 //uint8_t data_to_send_V6[18];
@@ -137,13 +144,13 @@ static void AgentTxKick(UART_HandleTypeDef *uart)
     }
 }
 
-static void AgentTxWrite(UART_HandleTypeDef *uart, const uint8_t *data, uint16_t len)
+static uint8_t AgentTxWrite(UART_HandleTypeDef *uart, const uint8_t *data, uint16_t len)
 {
     uint16_t i;
 
     if (uart == NULL || data == NULL || len == 0u)
     {
-        return;
+        return 0u;
     }
 
     taskENTER_CRITICAL();
@@ -151,7 +158,7 @@ static void AgentTxWrite(UART_HandleTypeDef *uart, const uint8_t *data, uint16_t
     {
         agent_tx_drop_count++;
         taskEXIT_CRITICAL();
-        return;
+        return 0u;
     }
 
     for (i = 0u; i < len; i++)
@@ -166,6 +173,7 @@ static void AgentTxWrite(UART_HandleTypeDef *uart, const uint8_t *data, uint16_t
     taskEXIT_CRITICAL();
 
     AgentTxKick(uart);
+    return 1u;
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
@@ -239,7 +247,7 @@ void Nx16_RequestSwitch(Nx16SwitchMode_t mode)
     g_switch_req = true; // 请求切换
 }
 
-Nx16SwitchMode_t GetNx16_Switch_mode() {
+Nx16SwitchMode_t GetNx16_Switch_mode(void) {
     return switch_mode;
 }
 
@@ -276,7 +284,6 @@ bool Nx16_TrySwitchActive(bool safe_to_switch)
         g_switch_req    = false;
     }
     // NX16_CRITICAL_EXIT();
-    nx16_ctrl.TaskTime = 30000; // [FIX] 重置超时时间
     return true;
 }
 
@@ -484,9 +491,7 @@ static void ParseAgentCommand(const uint8_t *frame_buf)
         }
         else if(nx16_ctrl.CommandID == CMD_INIT)
         {
-             TaskInit();
-             PathRx_Reset();
-            
+             /* Defer reset to OmniCalculate(); this parser runs in UART IRQ context. */
         }
         nx16_ctrl.RxFlag = 1; // 通知ChassisTask处理
     }
@@ -498,7 +503,6 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
     uint8_t sequence;
     float param1;
     float param2;
-    ChassisApiResult_e api_result = CHASSIS_API_BAD_PARAM;
 
     if (frame_buf[0] != 0xABu || frame_buf[1] != 0xCDu || frame_buf[15] != 0xDDu)
     {
@@ -517,6 +521,16 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
     cmd_id = frame_buf[2];
     sequence = frame_buf[12];
 
+    if (cmd_id != CMD2_MOVE_POLAR_SPEED &&
+        cmd_id != CMD2_MOVE_POLAR_DISTANCE &&
+        cmd_id != CMD2_ROTATE_IN_PLACE &&
+        cmd_id != CMD2_STOP &&
+        cmd_id != CMD2_INIT &&
+        cmd_id != CMD2_HEARTBEAT)
+    {
+        return;
+    }
+
     if (agent_v2_last_valid != 0u &&
         agent_v2_last_cmd == cmd_id &&
         agent_v2_last_seq == sequence)
@@ -524,86 +538,123 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
         return;
     }
 
-    agent_v2_last_cmd = cmd_id;
-    agent_v2_last_seq = sequence;
-    agent_v2_last_valid = 1u;
-
     param1 = FrameReadFloatLE(&frame_buf[4]);
     param2 = FrameReadFloatLE(&frame_buf[8]);
 
     nx16_ctrl.CommandID_test_zxj = cmd_id;
 
-    switch (cmd_id)
+    /* STOP/INIT may replace an unprocessed motion command. Other commands wait
+     * for the single-slot mailbox to be consumed by the chassis task. */
+    if (agent_v2_pending.valid != 0u &&
+        cmd_id != CMD2_STOP && cmd_id != CMD2_INIT)
+    {
+        return;
+    }
+
+    agent_v2_pending.command_id = cmd_id;
+    agent_v2_pending.sequence = sequence;
+    agent_v2_pending.param1 = param1;
+    agent_v2_pending.param2 = param2;
+    __DMB();
+    agent_v2_pending.valid = 1u;
+
+    agent_v2_last_cmd = cmd_id;
+    agent_v2_last_seq = sequence;
+    agent_v2_last_valid = 1u;
+}
+
+void Nx16ResetProtocolState(void)
+{
+    NX16_CRITICAL_ENTER();
+    PathRx_Reset();
+    agent_v2_pending.valid = 0u;
+    agent_v2_last_cmd = 0u;
+    agent_v2_last_seq = 0u;
+    agent_v2_last_valid = 0u;
+    NX16_CRITICAL_EXIT();
+}
+
+void Nx16ProcessPendingCommand(void)
+{
+    AgentV2PendingCommand_t pending;
+    ChassisApiResult_e api_result = CHASSIS_API_BAD_PARAM;
+    uint8_t legacy_cmd = 0u;
+
+    NX16_CRITICAL_ENTER();
+    if (agent_v2_pending.valid == 0u)
+    {
+        NX16_CRITICAL_EXIT();
+        return;
+    }
+    pending.command_id = agent_v2_pending.command_id;
+    pending.sequence = agent_v2_pending.sequence;
+    pending.param1 = agent_v2_pending.param1;
+    pending.param2 = agent_v2_pending.param2;
+    agent_v2_pending.valid = 0u;
+    NX16_CRITICAL_EXIT();
+
+    switch (pending.command_id)
     {
     case CMD2_MOVE_POLAR_SPEED:
-        api_result = ChassisMoveByAngleAndSpeed(param1, param2);
-        nx16_ctrl.CommandID = (param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
-        nx16_ctrl.CommandParam = param2;
+        legacy_cmd = (pending.param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
+        api_result = ChassisMoveByAngleAndSpeed(pending.param1, pending.param2);
         break;
 
     case CMD2_MOVE_POLAR_DISTANCE:
-        api_result = ChassisMoveByAngleAndDistance(param1, param2);
-        nx16_ctrl.CommandID = (param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
-        nx16_ctrl.CommandParam = param2;
+        legacy_cmd = (pending.param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
+        api_result = ChassisMoveByAngleAndDistance(pending.param1, pending.param2);
         if (api_result == CHASSIS_API_OK)
         {
-            nx16_ctrl.CoreInstruction.Distance = param2;
+            nx16_ctrl.CoreInstruction.Distance = pending.param2;
         }
         break;
 
     case CMD2_ROTATE_IN_PLACE:
     {
-        ChassisRotateDir_e dir = (((int32_t)(param1 + 0.5f)) == 0) ? CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
-        api_result = ChassisRotateInPlace(dir, param2);
-        nx16_ctrl.CommandID = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
-        nx16_ctrl.CommandParam = param2;
+        ChassisRotateDir_e dir = (((int32_t)(pending.param1 + 0.5f)) == 0) ?
+                                 CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
+        legacy_cmd = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+        api_result = ChassisRotateInPlace(dir, pending.param2);
         break;
     }
 
     case CMD2_STOP:
-        ChassisClearApiCommand();
-        TaskInit();
-        PathRx_Reset();
-        nx16_ctrl.CommandID = CMD_STOP;
-        nx16_ctrl.CommandParam = 0.0f;
-        nx16_ctrl.LastCommandID = CMD_STOP;
-        nx16_ctrl.Status = STATUS_IDLE;
-        nx16_ctrl.RxFlag = 0u;
+        ChassisStopCommand();
+        Nx16ResetProtocolState();
         return;
 
     case CMD2_INIT:
+        legacy_cmd = CMD_INIT;
         ChassisClearApiCommand();
         TaskInit();
-        PathRx_Reset();
-        nx16_ctrl.CommandID = CMD_INIT;
+        Nx16ResetProtocolState();
+        nx16_ctrl.CommandID = legacy_cmd;
         nx16_ctrl.CommandParam = 0.0f;
-        nx16_ctrl.LastCommandID = CMD_INIT;
+        nx16_ctrl.LastCommandID = legacy_cmd;
         nx16_ctrl.Status = STATUS_IDLE;
         nx16_ctrl.RxFlag = 0u;
         return;
 
     case CMD2_HEARTBEAT:
-        nx16_ctrl.CommandID = CMD2_HEARTBEAT;
-        nx16_ctrl.CommandParam = 0.0f;
+        nx16_ctrl.CommandID_test_zxj = CMD2_HEARTBEAT;
         return;
 
     default:
         return;
     }
 
+    nx16_ctrl.CommandID = legacy_cmd;
+    nx16_ctrl.CommandParam = pending.param2;
     if (api_result == CHASSIS_API_OK)
     {
         nx16_ctrl.Status = STATUS_EXECUTING;
         nx16_ctrl.RxFlag = 0u;
-        return;
     }
-
-    if (api_result == CHASSIS_API_BUSY)
+    else if (api_result != CHASSIS_API_BUSY)
     {
-        return;
+        nx16_ctrl.LastCommandID = legacy_cmd;
+        nx16_ctrl.Status = STATUS_CMD_FAILED;
     }
-
-    nx16_ctrl.Status = STATUS_CMD_FAILED;
 }
 
 static void ParseAgentCommandAuto(const uint8_t *frame_buf)
@@ -621,52 +672,7 @@ static void ParseAgentCommandAuto(const uint8_t *frame_buf)
 }
 
 
-static uint8_t nx16_init_flag = 0; 
 static USARTInstance *nx16_usart_instance;
-static DaemonInstance *nx16_daemon_instance;
-static uint8_t incoming_cmd = 0;
-
-
-/**
- * @brief 遥控器/SBUS协议数据解析 (已修复急停接收逻辑)
- */
-static void NX_to_sbus(const uint8_t *sbus_buf) 
-{
-    // 1. 先校验帧头帧尾，确保是有效数据包
-    if(sbus_buf[0] == 0xAA && sbus_buf[1] == 0xFF && sbus_buf[7] == 0xDD)
-    {
-        uint8_t incoming_cmd = sbus_buf[2]; // 获取该帧的指令ID
-
-        // 2. 【关键修复】在这里判断：如果是空闲状态 OR 是急停指令，才允许更新数据
-//        // 只要尚未处理上一帧(RxFlag==0) 且 (当前空闲 或 新指令是急停)
-//        if(nx16_ctrl.RxFlag == 0 && (nx16_ctrl.InTask == 0 || incoming_cmd == CMD_STOP))
-        {
-            nx16_ctrl.CommandID = incoming_cmd; // 将ModeID直接作为CommandID使用
-            nx16_ctrl.ModeID = incoming_cmd;    //以此兼容旧代码
-
-            // 解析距离参数
-            nx16_ctrl.CoreInstruction.Distance = ((float)sbus_buf[4]) * 12.7f / 127.0f;
-            
-            // 解析角度参数
-            if((sbus_buf[3] >> 6) == 0) 
-            {
-                nx16_ctrl.CoreInstruction.YawAngle = (float)(sbus_buf[3] & 0x3F);
-            }
-            else if((sbus_buf[3] >> 6) == 1)
-            {                  
-                nx16_ctrl.CoreInstruction.YawAngle = -(float)(sbus_buf[3] & 0x3F);
-            }
-
-            // 预计算时间参数
-            float temp = (nx16_ctrl.CoreInstruction.Distance * 500.0f) + 300.0f;
-            if (temp > 32767.0f) nx16_ctrl.TaskTime_zxjtest = 32767;
-            else if (temp < -32768.0f) nx16_ctrl.TaskTime_zxjtest = -32768;
-            else nx16_ctrl.TaskTime_zxjtest = (int16_t)temp;
-            
-            nx16_ctrl.RxFlag = 1; // 标志位置1，通知底盘任务
-        }
-    }
-}
 
 ///**
 // *向匿名上位机（ANO Ground Station）发送调试数据
@@ -719,14 +725,14 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     cmd_wz_converter.f = g_dbg.cmd_wz;
     
     lf_ref_converter.f = rc_ctrl.vt_lf;
-    lf_fdb_converter.f = (float)VESCMotorGetLogicalTargetRPM(VESC_WHEEL_LF);
+    lf_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LF);
     rf_ref_converter.f = rc_ctrl.vt_rf;
-    rf_fdb_converter.f = (float)VESCMotorGetLogicalTargetRPM(VESC_WHEEL_RF);
+    rf_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RF);
 
     lb_ref_converter.f = rc_ctrl.vt_lb;
-    lb_fdb_converter.f = (float)VESCMotorGetLogicalTargetRPM(VESC_WHEEL_LB);
+    lb_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LB);
     rb_ref_converter.f = rc_ctrl.vt_rb;
-    rb_fdb_converter.f = (float)VESCMotorGetLogicalTargetRPM(VESC_WHEEL_RB);
+    rb_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RB);
 
     cmd_vx_true_converter.f = (float)CANGetHcan1RxMsgCount();
     cmd_vy_true_converter.f = (float)VESCMotorGetRxAnyCount();
@@ -769,8 +775,7 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     frame[FRAME_LEN_EXT - 2] = checksum;
     frame[FRAME_LEN_EXT - 1] = 0xDD;
     
-    nx16_ctrl.last_tx_status = HAL_OK;
-    AgentTxWrite(UART_X, frame, FRAME_LEN_EXT);
+    nx16_ctrl.last_tx_status = AgentTxWrite(UART_X, frame, FRAME_LEN_EXT) ? HAL_OK : HAL_ERROR;
     if (nx16_ctrl.last_tx_status == HAL_OK) {
         nx16_ctrl.tx_status_count++;
     } else {
@@ -923,10 +928,8 @@ void SendIMUDataToAgent(UART_HandleTypeDef* UART_X)
 
     AgentTxWrite(UART_X, frame, IMU_FRAME_LEN);
 }
-static void Nx16BufferRxCallback()
+static void Nx16BufferRxCallback(void)
 {
-    // 这里假设如果是Agent串口用ParseAgentCommand，如果是SBUS用NX_to_sbus
-    // 根据你原有的逻辑，这里似乎主要处理Agent协议
     nx16_ctrl.rx_callback_count++;
     ParseAgentCommandAuto(nx16_usart_instance->recv_buff);
 }
@@ -940,14 +943,7 @@ BrainCore_t *Nx16ControlInit(UART_HandleTypeDef *nx16_usart_handle)
     conf.recv_buff_size = AGENT_RX_FRAME_LENGTH_MAX;
     nx16_usart_instance = USARTRegister(&conf); // 启动串口服务
 
-    nx16_init_flag = 1;
     return &nx16_ctrl;
-}
-
-// 检测通信模块是否在线
-uint8_t Nx16ControlIsOnline()
-{
-    return 0; 
 }
 
 

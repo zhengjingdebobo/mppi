@@ -1,7 +1,7 @@
 /**
  * @file bsp_usart.c
  * @author neozng
- * @brief  ´®¿Úbsp²ãµÄÊµÏÖ
+ * @brief  ä¸²å£bspå±‚çš„å®ç°
  * @version beta
  * @date 2022-11-01
  *
@@ -14,31 +14,31 @@
 //#include "memory.h"
 
 /* usart service instance, modules' info would be recoreded here using USARTRegister() */
-/* usart·şÎñÊµÀı,ËùÓĞ×¢²áÁËusartµÄÄ£¿éĞÅÏ¢»á±»±£´æÔÚÕâÀï */
+/* usartæœåŠ¡å®ä¾‹,æ‰€æœ‰æ³¨å†Œäº†usartçš„æ¨¡å—ä¿¡æ¯ä¼šè¢«ä¿å­˜åœ¨è¿™é‡Œ */
 static uint8_t idx;
 static USARTInstance *usart_instance[DEVICE_USART_CNT] = {NULL};
 
 /**
- * @brief Æô¶¯´®¿Ú·şÎñ,»áÔÚÃ¿¸öÊµÀı×¢²áÖ®ºó×Ô¶¯ÆôÓÃ½ÓÊÕ,µ±Ç°ÊµÏÖÎªDMA½ÓÊÕ,ºóĞø¿ÉÄÜÌí¼ÓITºÍBLOCKING½ÓÊÕ
+ * @brief å¯åŠ¨ä¸²å£æœåŠ¡,ä¼šåœ¨æ¯ä¸ªå®ä¾‹æ³¨å†Œä¹‹åè‡ªåŠ¨å¯ç”¨æ¥æ”¶,å½“å‰å®ç°ä¸ºDMAæ¥æ”¶,åç»­å¯èƒ½æ·»åŠ ITå’ŒBLOCKINGæ¥æ”¶
  *
- * @todo ´®¿Ú·şÎñ»áÔÚÃ¿¸öÊµÀı×¢²áÖ®ºó×Ô¶¯ÆôÓÃ½ÓÊÕ,µ±Ç°ÊµÏÖÎªDMA½ÓÊÕ,ºóĞø¿ÉÄÜÌí¼ÓITºÍBLOCKING½ÓÊÕ
- *       ¿ÉÄÜ»¹Òª½«´Ëº¯ÊıĞŞ¸ÄÎªextern,Ê¹µÃmodule¿ÉÒÔ¿ØÖÆ´®¿ÚµÄÆôÍ£
+ * @todo ä¸²å£æœåŠ¡ä¼šåœ¨æ¯ä¸ªå®ä¾‹æ³¨å†Œä¹‹åè‡ªåŠ¨å¯ç”¨æ¥æ”¶,å½“å‰å®ç°ä¸ºDMAæ¥æ”¶,åç»­å¯èƒ½æ·»åŠ ITå’ŒBLOCKINGæ¥æ”¶
+ *       å¯èƒ½è¿˜è¦å°†æ­¤å‡½æ•°ä¿®æ”¹ä¸ºextern,ä½¿å¾—moduleå¯ä»¥æ§åˆ¶ä¸²å£çš„å¯åœ
  *
- * @param _instance instance owned by module,Ä£¿éÓµÓĞµÄ´®¿ÚÊµÀı
+ * @param _instance instance owned by module,æ¨¡å—æ‹¥æœ‰çš„ä¸²å£å®ä¾‹
  */
 void USARTServiceInit(USARTInstance *_instance)
 {
     HAL_UARTEx_ReceiveToIdle_DMA(_instance->usart_handle, _instance->recv_buff, _instance->recv_buff_size);
-    // ¹Ø±Õdma half transferÖĞ¶Ï·ÀÖ¹Á½´Î½øÈëHAL_UARTEx_RxEventCallback()
-    // ÕâÊÇHAL¿âµÄÒ»¸öÉè¼ÆÊ§Îó,·¢ÉúDMA´«ÊäÍê³É/°ëÍê³ÉÒÔ¼°´®¿ÚIDLEÖĞ¶Ï¶¼»á´¥·¢HAL_UARTEx_RxEventCallback()
-    // ÎÒÃÇÖ»Ï£Íû´¦ÀíµÚÒ»ÖÖºÍµÚÈıÖÖÇé¿ö,Òò´ËÖ±½Ó¹Ø±ÕDMA°ë´«ÊäÖĞ¶Ï
+    // å…³é—­dma half transferä¸­æ–­é˜²æ­¢ä¸¤æ¬¡è¿›å…¥HAL_UARTEx_RxEventCallback()
+    // è¿™æ˜¯HALåº“çš„ä¸€ä¸ªè®¾è®¡å¤±è¯¯,å‘ç”ŸDMAä¼ è¾“å®Œæˆ/åŠå®Œæˆä»¥åŠä¸²å£IDLEä¸­æ–­éƒ½ä¼šè§¦å‘HAL_UARTEx_RxEventCallback()
+    // æˆ‘ä»¬åªå¸Œæœ›å¤„ç†ç¬¬ä¸€ç§å’Œç¬¬ä¸‰ç§æƒ…å†µ,å› æ­¤ç›´æ¥å…³é—­DMAåŠä¼ è¾“ä¸­æ–­
     __HAL_DMA_DISABLE_IT(_instance->usart_handle->hdmarx, DMA_IT_HT);
 }
 
 USARTInstance *USARTRegister(USART_Init_Config_s *init_config)
 {
     if (idx >= DEVICE_USART_CNT)
-	{ // ³¬¹ı×î´óÊµÀıÊı
+	{ // è¶…è¿‡æœ€å¤§å®ä¾‹æ•°
 //        while (1)
 //				{
 //        //    LOGERROR("[bsp_usart] USART exceed max instance count!");
@@ -47,7 +47,7 @@ USARTInstance *USARTRegister(USART_Init_Config_s *init_config)
 
     for (uint8_t i = 0; i < idx; i++) 
 	{
-			// ¼ì²éÊÇ·ñÒÑ¾­×¢²á¹ı
+			// æ£€æŸ¥æ˜¯å¦å·²ç»æ³¨å†Œè¿‡
         if (usart_instance[i]->usart_handle == init_config->usart_handle)
 				{
 //            while (1)
@@ -58,11 +58,11 @@ USARTInstance *USARTRegister(USART_Init_Config_s *init_config)
 				}
     }
     
-    // 1. ÉêÇë½á¹¹ÌåÄÚ´æ
+    // 1. ç”³è¯·ç»“æ„ä½“å†…å­˜
     USARTInstance *instance = (USARTInstance *)malloc(sizeof(USARTInstance));
     memset(instance, 0, sizeof(USARTInstance));
     
-    // 2. ¸³Öµ
+    // 2. èµ‹å€¼
     instance->usart_handle = init_config->usart_handle;
     instance->recv_buff_size = init_config->recv_buff_size;
     instance->module_callback = init_config->module_callback;
@@ -72,7 +72,7 @@ USARTInstance *USARTRegister(USART_Init_Config_s *init_config)
     return instance;
 }
 
-/* @todo µ±Ç°½ö½øĞĞÁËĞÎÊ½ÉÏµÄ·â×°,ºóĞøÒª½øÒ»²½¿¼ÂÇÊÇ·ñ½«moduleµÄĞĞÎªÓëbspÍêÈ«·ÖÀë */
+/* @todo å½“å‰ä»…è¿›è¡Œäº†å½¢å¼ä¸Šçš„å°è£…,åç»­è¦è¿›ä¸€æ­¥è€ƒè™‘æ˜¯å¦å°†moduleçš„è¡Œä¸ºä¸bspå®Œå…¨åˆ†ç¦» */
 void USARTSend(USARTInstance *_instance, uint8_t *send_buf, uint16_t send_size, USART_TRANSFER_MODE mode)
 {
     switch (mode)
@@ -88,30 +88,29 @@ void USARTSend(USARTInstance *_instance, uint8_t *send_buf, uint16_t send_size, 
         break;
     default:
         while (1)
-            ; // illegal mode! check your code context! ¼ì²é¶¨ÒåinstanceµÄ´úÂëÉÏÏÂÎÄ,¿ÉÄÜ³öÏÖÖ¸ÕëÔ½½ç
+            ; // illegal mode! check your code context! æ£€æŸ¥å®šä¹‰instanceçš„ä»£ç ä¸Šä¸‹æ–‡,å¯èƒ½å‡ºç°æŒ‡é’ˆè¶Šç•Œ
         break;
     }
 }
 
-/* ´®¿Ú·¢ËÍÊ±,gstate»á±»ÉèÎªBUSY_TX */
+/* ä¸²å£å‘é€æ—¶,gstateä¼šè¢«è®¾ä¸ºBUSY_TX */
 uint8_t USARTIsReady(USARTInstance *_instance)
 {
-    if (_instance->usart_handle->gState | HAL_UART_STATE_BUSY_TX)
-        return 0;
-    else
-        return 1;
+    return (_instance != NULL &&
+            _instance->usart_handle != NULL &&
+            _instance->usart_handle->gState == HAL_UART_STATE_READY) ? 1u : 0u;
 }
 
 /**
- * @brief Ã¿´Îdma/idleÖĞ¶Ï·¢ÉúÊ±£¬¶¼»áµ÷ÓÃ´Ëº¯Êı.¶ÔÓÚÃ¿¸öuartÊµÀı»áµ÷ÓÃ¶ÔÓ¦µÄ»Øµ÷½øĞĞ½øÒ»²½µÄ´¦Àí
- *        ÀıÈç:ÊÓ¾õĞ­Òé½âÎö/Ò£¿ØÆ÷½âÎö/²ÃÅĞÏµÍ³½âÎö
+ * @brief æ¯æ¬¡dma/idleä¸­æ–­å‘ç”Ÿæ—¶ï¼Œéƒ½ä¼šè°ƒç”¨æ­¤å‡½æ•°.å¯¹äºæ¯ä¸ªuartå®ä¾‹ä¼šè°ƒç”¨å¯¹åº”çš„å›è°ƒè¿›è¡Œè¿›ä¸€æ­¥çš„å¤„ç†
+ *        ä¾‹å¦‚:è§†è§‰åè®®è§£æ/é¥æ§å™¨è§£æ/è£åˆ¤ç³»ç»Ÿè§£æ
  *
- * @note  Í¨¹ı__HAL_DMA_DISABLE_IT(huart->hdmarx,DMA_IT_HT)¹Ø±Õdma half transferÖĞ¶Ï·ÀÖ¹Á½´Î½øÈëHAL_UARTEx_RxEventCallback()
- *        ÕâÊÇHAL¿âµÄÒ»¸öÉè¼ÆÊ§Îó,·¢ÉúDMA´«ÊäÍê³É/°ëÍê³ÉÒÔ¼°´®¿ÚIDLEÖĞ¶Ï¶¼»á´¥·¢HAL_UARTEx_RxEventCallback()
- *        ÎÒÃÇÖ»Ï£Íû´¦Àí£¬Òò´ËÖ±½Ó¹Ø±ÕDMA°ë´«ÊäÖĞ¶ÏµÚÒ»ÖÖºÍµÚÈıÖÖÇé¿ö
+ * @note  é€šè¿‡__HAL_DMA_DISABLE_IT(huart->hdmarx,DMA_IT_HT)å…³é—­dma half transferä¸­æ–­é˜²æ­¢ä¸¤æ¬¡è¿›å…¥HAL_UARTEx_RxEventCallback()
+ *        è¿™æ˜¯HALåº“çš„ä¸€ä¸ªè®¾è®¡å¤±è¯¯,å‘ç”ŸDMAä¼ è¾“å®Œæˆ/åŠå®Œæˆä»¥åŠä¸²å£IDLEä¸­æ–­éƒ½ä¼šè§¦å‘HAL_UARTEx_RxEventCallback()
+ *        æˆ‘ä»¬åªå¸Œæœ›å¤„ç†ï¼Œå› æ­¤ç›´æ¥å…³é—­DMAåŠä¼ è¾“ä¸­æ–­ç¬¬ä¸€ç§å’Œç¬¬ä¸‰ç§æƒ…å†µ
  *
- * @param huart ·¢ÉúÖĞ¶ÏµÄ´®¿Ú
- * @param Size ´Ë´Î½ÓÊÕµ½µÄ×ÜÊı¾ÓÁ¿,ÔİÊ±Ã»ÓÃ
+ * @param huart å‘ç”Ÿä¸­æ–­çš„ä¸²å£
+ * @param Size æ­¤æ¬¡æ¥æ”¶åˆ°çš„æ€»æ•°å±…é‡,æš‚æ—¶æ²¡ç”¨
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
@@ -119,15 +118,15 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     { // find the instance which is being handled
         if (huart == usart_instance[i]->usart_handle)
         { // call the callback function if it is not NULL
-            // Ä£¿é»Øµ÷
+            // æ¨¡å—å›è°ƒ
             if (usart_instance[i]->module_callback != NULL)
             {
                 usart_instance[i]->module_callback();
-                memset(usart_instance[i]->recv_buff, 0, Size); // ½ÓÊÕ½áÊøºóÇå¿Õbuffer,¶ÔÓÚ±ä³¤Êı¾İÊÇ±ØÒªµÄ
+                memset(usart_instance[i]->recv_buff, 0, Size); // æ¥æ”¶ç»“æŸåæ¸…ç©ºbuffer,å¯¹äºå˜é•¿æ•°æ®æ˜¯å¿…è¦çš„
             }
-            // ³õÊ¼»¯²¢Æô¶¯ ¡°DMA + ¿ÕÏĞÖĞ¶Ï¡± Ä£Ê½µÄ´®¿Ú½ÓÊÕ -> DMA ¿ØÖÆÆ÷»á×Ô¶¯°Ñ RDR µÄ×Ö½Ú°áµ½ÄÚ´æ recv_buff[]
+            // åˆå§‹åŒ–å¹¶å¯åŠ¨ â€œDMA + ç©ºé—²ä¸­æ–­â€ æ¨¡å¼çš„ä¸²å£æ¥æ”¶ -> DMA æ§åˆ¶å™¨ä¼šè‡ªåŠ¨æŠŠ RDR çš„å­—èŠ‚æ¬åˆ°å†…å­˜ recv_buff[]
             HAL_UARTEx_ReceiveToIdle_DMA(usart_instance[i]->usart_handle, usart_instance[i]->recv_buff, usart_instance[i]->recv_buff_size);
-            // ½ûÓÃÕâ¸ö DMA µÄ°ë´«ÊäÖĞ¶Ï
+            // ç¦ç”¨è¿™ä¸ª DMA çš„åŠä¼ è¾“ä¸­æ–­
             __HAL_DMA_DISABLE_IT(usart_instance[i]->usart_handle->hdmarx, DMA_IT_HT);
             return; // break the loop
         }
@@ -135,11 +134,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 }
 
 /**
- * @brief µ±´®¿Ú·¢ËÍ/½ÓÊÕ³öÏÖ´íÎóÊ±,»áµ÷ÓÃ´Ëº¯Êı,´ËÊ±Õâ¸öº¯ÊıÒª×öµÄ¾ÍÊÇÖØĞÂÆô¶¯½ÓÊÕ
+ * @brief å½“ä¸²å£å‘é€/æ¥æ”¶å‡ºç°é”™è¯¯æ—¶,ä¼šè°ƒç”¨æ­¤å‡½æ•°,æ­¤æ—¶è¿™ä¸ªå‡½æ•°è¦åšçš„å°±æ˜¯é‡æ–°å¯åŠ¨æ¥æ”¶
  *
- * @note  ×î³£¼ûµÄ´íÎó:ÆæÅ¼Ğ£Ñé/Òç³ö/Ö¡´íÎó
+ * @note  æœ€å¸¸è§çš„é”™è¯¯:å¥‡å¶æ ¡éªŒ/æº¢å‡º/å¸§é”™è¯¯
  *
- * @param huart ·¢Éú´íÎóµÄ´®¿Ú
+ * @param huart å‘ç”Ÿé”™è¯¯çš„ä¸²å£
  */
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
@@ -155,58 +154,58 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
-// µ÷ÊÔ²»ÊÜ¿ØÖÆ
+// è°ƒè¯•ä¸å—æ§åˆ¶
 ///**
-// * @brief µ±´®¿Ú·¢ËÍ/½ÓÊÕ³öÏÖ´íÎóÊ±,»áµ÷ÓÃ´Ëº¯Êı,´ËÊ±Õâ¸öº¯ÊıÒª×öµÄ¾ÍÊÇÖØĞÂÆô¶¯½ÓÊÕ
+// * @brief å½“ä¸²å£å‘é€/æ¥æ”¶å‡ºç°é”™è¯¯æ—¶,ä¼šè°ƒç”¨æ­¤å‡½æ•°,æ­¤æ—¶è¿™ä¸ªå‡½æ•°è¦åšçš„å°±æ˜¯é‡æ–°å¯åŠ¨æ¥æ”¶
 // *
-// * @note  ×î³£¼ûµÄ´íÎó:ÆæÅ¼Ğ£Ñé/Òç³ö/Ö¡´íÎó
+// * @note  æœ€å¸¸è§çš„é”™è¯¯:å¥‡å¶æ ¡éªŒ/æº¢å‡º/å¸§é”™è¯¯
 // *
-// * @param huart ·¢Éú´íÎóµÄ´®¿Ú
+// * @param huart å‘ç”Ÿé”™è¯¯çš„ä¸²å£
 // */
 //void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 //{
 //    // ============================================================
-//    // ¡¾ĞÂÔö 1¡¿: ±ØĞëÏÔÊ½Çå³ı´íÎó±êÖ¾Î»£¬·ñÔò´®¿Ú¿ÉÄÜ»áËøËÀ
-//    // ÌØ±ğÊÇ ORE (Òç³ö´íÎó)£¬ÕâÊÇµ÷ÊÔÊ±×îÈİÒ×Óöµ½µÄ
+//    // ã€æ–°å¢ 1ã€‘: å¿…é¡»æ˜¾å¼æ¸…é™¤é”™è¯¯æ ‡å¿—ä½ï¼Œå¦åˆ™ä¸²å£å¯èƒ½ä¼šé”æ­»
+//    // ç‰¹åˆ«æ˜¯ ORE (æº¢å‡ºé”™è¯¯)ï¼Œè¿™æ˜¯è°ƒè¯•æ—¶æœ€å®¹æ˜“é‡åˆ°çš„
 //    // ============================================================
-//    uint32_t isr_flags = READ_REG(huart->Instance->SR); // ¶ÁÈ¡×´Ì¬¼Ä´æÆ÷(F4ÏµÁĞÊÇSR, H7/G4ÊÇISR)
+//    uint32_t isr_flags = READ_REG(huart->Instance->SR); // è¯»å–çŠ¶æ€å¯„å­˜å™¨(F4ç³»åˆ—æ˜¯SR, H7/G4æ˜¯ISR)
 //    
 //    if ((HAL_UART_GetError(huart) & HAL_UART_ERROR_ORE) || (isr_flags & UART_FLAG_ORE))
 //    {
-//        __HAL_UART_CLEAR_OREFLAG(huart); // Çå³ıÒç³ö´íÎó
+//        __HAL_UART_CLEAR_OREFLAG(huart); // æ¸…é™¤æº¢å‡ºé”™è¯¯
 //    }
 //    
 //    if ((HAL_UART_GetError(huart) & HAL_UART_ERROR_NE) || (isr_flags & UART_FLAG_NE))
 //    {
-//        __HAL_UART_CLEAR_NEFLAG(huart); // Çå³ıÔëÉù´íÎó
+//        __HAL_UART_CLEAR_NEFLAG(huart); // æ¸…é™¤å™ªå£°é”™è¯¯
 //    }
 //    
 //    if ((HAL_UART_GetError(huart) & HAL_UART_ERROR_FE) || (isr_flags & UART_FLAG_FE))
 //    {
-//        __HAL_UART_CLEAR_FEFLAG(huart); // Çå³ıÖ¡´íÎó
+//        __HAL_UART_CLEAR_FEFLAG(huart); // æ¸…é™¤å¸§é”™è¯¯
 //    }
 
 //    if ((HAL_UART_GetError(huart) & HAL_UART_ERROR_PE) || (isr_flags & UART_FLAG_PE))
 //    {
-//        __HAL_UART_CLEAR_PEFLAG(huart); // Çå³ıÆæÅ¼Ğ£Ñé´íÎó
+//        __HAL_UART_CLEAR_PEFLAG(huart); // æ¸…é™¤å¥‡å¶æ ¡éªŒé”™è¯¯
 //    }
 
 //    // ============================================================
-//    // ¡¾Ô­ÓĞÂß¼­¡¿: ±éÀúÊµÀı£¬ÖØÆô DMA ½ÓÊÕ
+//    // ã€åŸæœ‰é€»è¾‘ã€‘: éå†å®ä¾‹ï¼Œé‡å¯ DMA æ¥æ”¶
 //    // ============================================================
 //    for (uint8_t i = 0; i < idx; ++i)
 //    {
 //        if (huart == usart_instance[i]->usart_handle)
 //        {
-//            // ³¢ÊÔÖØÆô½ÓÊÕ (Ê¹ÓÃ Idle Line ¼ì²âÄ£Ê½)
+//            // å°è¯•é‡å¯æ¥æ”¶ (ä½¿ç”¨ Idle Line æ£€æµ‹æ¨¡å¼)
 //            HAL_UARTEx_ReceiveToIdle_DMA(usart_instance[i]->usart_handle, 
 //                                         usart_instance[i]->recv_buff, 
 //                                         usart_instance[i]->recv_buff_size);
 //            
-//            // ¹Ø±Õ DMA °ë´«ÊäÖĞ¶Ï (·ÀÖ¹Æµ·±½øÈëÖĞ¶Ï£¬Í¨³£ÎÒÃÇÖ»¹ØĞÄ´«Íê»ò¿ÕÏĞ)
+//            // å…³é—­ DMA åŠä¼ è¾“ä¸­æ–­ (é˜²æ­¢é¢‘ç¹è¿›å…¥ä¸­æ–­ï¼Œé€šå¸¸æˆ‘ä»¬åªå…³å¿ƒä¼ å®Œæˆ–ç©ºé—²)
 //            __HAL_DMA_DISABLE_IT(usart_instance[i]->usart_handle->hdmarx, DMA_IT_HT);
 //            
-//            // ¿ÉÒÔ¼ÓÒ»¾ä Log ·½±ãµ÷ÊÔ (¿ÉÑ¡)
+//            // å¯ä»¥åŠ ä¸€å¥ Log æ–¹ä¾¿è°ƒè¯• (å¯é€‰)
 //            // LOGWARNING("[bsp_usart] Error recovered on instance idx [%d], ORE cleared.", i);
 //            
 //            return;

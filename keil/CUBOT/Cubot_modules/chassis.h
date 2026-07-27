@@ -77,6 +77,9 @@ void TaskInit(void);
  */
 void ChassisClearApiCommand(void);
 
+/* Stop the active command without resetting odometry or the IMU yaw origin. */
+void ChassisStopCommand(void);
+
 /**
  * @brief 按“方向角 + 速度”方式持续控制底盘平移。
  *

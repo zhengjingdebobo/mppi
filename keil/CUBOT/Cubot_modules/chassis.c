@@ -1,6 +1,5 @@
 #include "chassis.h"
 #include "nx16.h" // 上位机控制结构与协议常量
-#include "pid.h"
 #include <math.h>
 #include <string.h>
 #include "hwt9053_can.h"
@@ -30,10 +29,10 @@
 #define MOVE_FINISH_TARGET_RADIUS_M 0.020f
 #define MOVE_FINISH_YAW_DEG        2.0f
 #define MOVE_FINISH_SPEED_MPS      0.025f
-#define MOVE_FINISH_HOLD_TICK      6u
+#define MOVE_FINISH_HOLD_MS        250u
 #define MOVE_FEEDBACK_DT_FALLBACK_S 0.01f
 #define MOVE_VEL_FILTER_ALPHA      0.25f
-#define MOVE_TASK_TIMEOUT_TICK     30000
+#define MOVE_TASK_TIMEOUT_MS       30000u
 #define MOVE_FUSED_POS_WEIGHT      0.25f
 #define MOVE_FUSED_LAT_WEIGHT      0.35f
 #define MOVE_SLIP_ENC_SPEED_MPS    0.10f
@@ -41,14 +40,21 @@
 #define MOVE_SLIP_ACCEL_MPS2       0.12f
 #define MOVE_SLIP_LIMIT_SPEED_MPS  0.10f
 #define MOVE_SLIP_HOLD_TICK        8u
-#define ROTATE_CONTROL_MAX         380.0f
+#define MOVE_HEADING_KP_ERPM_DEG   70.0f
+#define MOVE_HEADING_KD_ERPM_DPS   10.0f
+#define MOVE_HEADING_MAX_ERPM      600.0f
+#define ROTATE_KP_ERPM_PER_DEG     55.0f
+#define ROTATE_KD_ERPM_PER_DPS     12.0f
+#define ROTATE_DEADZONE_ERPM       900.0f
+#define ROTATE_CONTROL_MAX_ERPM    2600.0f
+#define ROTATE_MAX_ACCEL_ERPM_S    8000.0f
+#define ROTATE_DT_FALLBACK_S       0.005f
 #define ROTATE_FINISH_YAW_DEG      1.0f
 #define ROTATE_FINISH_RATE_DPS     3.0f
-#define ROTATE_FINISH_HOLD_TICK    150u
+#define ROTATE_FINISH_HOLD_MS      250u
+#define ROTATE_TASK_TIMEOUT_MS     30000u
 #define RC_MOVE_DEADBAND           35
 #define RC_YAW_DEADBAND            80
-#define RC_API_OVERRIDE_MOVE_DEADBAND 100
-#define RC_API_OVERRIDE_YAW_DEADBAND  120
 #define CHASSIS_WZ_DEADBAND        8.0f
 
 /* 里程计实例与调试数据 */
@@ -79,10 +85,14 @@ static float move_filtered_forward_vel = 0.0f;
 static float move_filtered_lateral_vel = 0.0f;
 static float move_cmd_forward_mps = 0.0f;
 static float move_cmd_lateral_mps = 0.0f;
-static uint16_t move_finish_hold_count = 0u;
+static uint32_t move_finish_since_ms = 0u;
 static uint8_t move_finish_latched = 0u;
 static uint16_t move_slip_hold_count = 0u;
-static uint16_t rotate_finish_hold_count = 0u;
+static float rotate_cmd_erpm = 0.0f;
+static uint32_t rotate_last_tick_ms = 0u;
+static uint32_t rotate_stable_since_ms = 0u;
+static uint8_t rotate_stable_active = 0u;
+static uint32_t chassis_task_deadline_ms = 0u;
 static int8_t move_dir = 1;
 static uint8_t move_direct_wheel_mode = 0u;
 typedef enum
@@ -97,8 +107,6 @@ typedef enum
 static ChassisApiMode_e chassis_api_mode = CHASSIS_API_MODE_NONE;
 static float chassis_api_heading_deg = 0.0f;
 static float chassis_api_speed_mps = 0.0f;
-int16_t Chassis_Follow_Control(float target, float feedback, One_PID_Para_t *pid);
-                          
 void FinishTask(uint8_t status);
 void TaskInit(void);
 static void IMU_data_send(uint32_t now_tick, uint64_t now_us);
@@ -108,6 +116,71 @@ static void Chassis_StartMoveTask(int8_t direction);
 static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m);
 static void Chassis_UpdateMoveTask(void);
 static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float yaw_cmd);
+static void Chassis_SetTaskTimeout(uint32_t timeout_ms);
+static uint8_t Chassis_TaskTimedOut(void);
+static void Chassis_ResetRotateControl(void);
+static float Chassis_UpdateRotateControl(float angle_error_deg, float gyro_z_dps);
+
+static void Chassis_SetTaskTimeout(uint32_t timeout_ms)
+{
+    chassis_task_deadline_ms = HAL_GetTick() + timeout_ms;
+    nx16_ctrl.TaskTime = (timeout_ms > 32767u) ? 32767 : (int16_t)timeout_ms;
+}
+static uint8_t Chassis_TaskTimedOut(void)
+{
+    uint32_t now = HAL_GetTick();
+    int32_t remaining = (int32_t)(chassis_task_deadline_ms - now);
+
+    if (remaining <= 0)
+    {
+        nx16_ctrl.TaskTime = 0;
+        return 1u;
+    }
+
+    nx16_ctrl.TaskTime = (remaining > 32767) ? 32767 : (int16_t)remaining;
+    return 0u;
+}
+
+static void Chassis_ResetRotateControl(void)
+{
+    rotate_cmd_erpm = 0.0f;
+    rotate_last_tick_ms = HAL_GetTick();
+    rotate_stable_since_ms = 0u;
+    rotate_stable_active = 0u;
+}
+
+static float Chassis_UpdateRotateControl(float angle_error_deg, float gyro_z_dps)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t elapsed_ms = now - rotate_last_tick_ms;
+    float dt = (elapsed_ms > 0u) ? (float)elapsed_ms * 0.001f : ROTATE_DT_FALLBACK_S;
+    float target_erpm;
+    float max_step;
+    float step;
+
+    rotate_last_tick_ms = now;
+    if (dt <= 0.0f || dt > 0.05f) dt = ROTATE_DT_FALLBACK_S;
+
+    target_erpm = angle_error_deg * ROTATE_KP_ERPM_PER_DEG -
+                  gyro_z_dps * ROTATE_KD_ERPM_PER_DPS;
+    /* 实测右转末段约 870 ERPM 时四轮仍可能静止，约 1000 ERPM 才能可靠克服静摩擦。
+     * 在完成角度之外补偿静摩擦；进入完成区后撤销补偿，由 PD 阻尼停车。
+     */
+    if (fabsf(angle_error_deg) > ROTATE_FINISH_YAW_DEG)
+    {
+        target_erpm += (angle_error_deg > 0.0f) ?
+                       ROTATE_DEADZONE_ERPM : -ROTATE_DEADZONE_ERPM;
+    }
+    if (target_erpm > ROTATE_CONTROL_MAX_ERPM) target_erpm = ROTATE_CONTROL_MAX_ERPM;
+    if (target_erpm < -ROTATE_CONTROL_MAX_ERPM) target_erpm = -ROTATE_CONTROL_MAX_ERPM;
+
+    max_step = ROTATE_MAX_ACCEL_ERPM_S * dt;
+    step = target_erpm - rotate_cmd_erpm;
+    if (step > max_step) step = max_step;
+    if (step < -max_step) step = -max_step;
+    rotate_cmd_erpm += step;
+    return rotate_cmd_erpm;
+}
 
 static uint8_t ChassisGetHeading(HWT9053Heading_t *heading)
 {
@@ -163,6 +236,13 @@ void ChassisClearApiCommand(void)
         g_dbg.cmd_vy = 0.0f;
         g_dbg.cmd_wz = 0.0f;
     }
+}
+
+void ChassisStopCommand(void)
+{
+    ChassisClearApiCommand();
+    nx16_ctrl.CommandID = CMD_STOP;
+    FinishTask(STATUS_CMD_SUCCESS);
 }
 
 /* 按“方向角 + 速度”方式持续控制底盘平移。 */
@@ -285,15 +365,12 @@ ChassisApiResult_e ChassisRotateInPlace(ChassisRotateDir_e dir, float angle_deg)
     nx16_ctrl.CommandID = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
     nx16_ctrl.LastCommandID = nx16_ctrl.CommandID;
     nx16_ctrl.CoreInstruction.YawAngle = signed_angle_deg;
-    nx16_ctrl.TaskTime = 30000;
+    Chassis_SetTaskTimeout(ROTATE_TASK_TIMEOUT_MS);
     nx16_ctrl.RxFlag = 0u;
     nx16_ctrl.InTask = 3u;
     nx16_ctrl.Status = STATUS_EXECUTING;
-    rc_ctrl.chassis_k = 8.05f;
-    Chassis_follow_pid.shell.shell_i_part = 0.0f;
-    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
-    Chassis_follow_pid.shell.shell_out = 0.0f;
-    rotate_finish_hold_count = 0u;
+    rc_ctrl.chassis_k = 1.0f;
+    Chassis_ResetRotateControl();
     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
     rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class + signed_angle_deg;
     return CHASSIS_API_OK;
@@ -312,35 +389,47 @@ static volatile int32_t current_idx = 0;
 
 static void OmniCalculate()
 {
-    int16_t rc_vy_raw = (int16_t)rc_ctrl.rc_channels[0] - 1024;
-    int16_t rc_vx_raw = (int16_t)rc_ctrl.rc_channels[1] - 1024;
-    int16_t rc_yaw_raw = (int16_t)rc_ctrl.rc_channels[3] - 1024;
-    uint8_t rc_online = RemoteControlIsOnline() ? 1u : 0u;
-    uint8_t api_override_active = ChassisApiOverrideIsActive();
-    uint8_t serial_control_allowed = ChassisSerialControlIsAllowed();
-    uint8_t rc_manual_enabled = (rc_online &&
-                                 rc_ctrl.rc_channels[2] >= 300u) ? 1u : 0u;
-    uint8_t rc_override_active = (rc_manual_enabled &&
-                                  (rc_vy_raw > RC_API_OVERRIDE_MOVE_DEADBAND ||
-                                   rc_vy_raw < -RC_API_OVERRIDE_MOVE_DEADBAND ||
-                                   rc_vx_raw > RC_API_OVERRIDE_MOVE_DEADBAND ||
-                                   rc_vx_raw < -RC_API_OVERRIDE_MOVE_DEADBAND ||
-                                   rc_yaw_raw > RC_API_OVERRIDE_YAW_DEADBAND ||
-                                   rc_yaw_raw < -RC_API_OVERRIDE_YAW_DEADBAND)) ? 1u : 0u;
+    int16_t rc_vy_raw;
+    int16_t rc_vx_raw;
+    int16_t rc_yaw_raw;
+    uint8_t rc_online;
+    uint8_t api_override_active;
+    uint8_t serial_control_allowed;
+    uint8_t rc_manual_enabled;
+    uint8_t rc_override_active;
+    uint8_t serial_motion_pending;
     HWT9053Heading_t heading;
 
-    // 默认要求遥控器在线；运行中掉线时立即撤销串口控制并停车。
-    if ((!rc_manual_enabled && !api_override_active) ||
-        (api_override_active && !serial_control_allowed))
+    Nx16ProcessPendingCommand();
+
+    rc_vy_raw = (int16_t)rc_ctrl.rc_channels[0] - 1024;
+    rc_vx_raw = (int16_t)rc_ctrl.rc_channels[1] - 1024;
+    rc_yaw_raw = (int16_t)rc_ctrl.rc_channels[3] - 1024;
+    rc_online = RemoteControlIsOnline() ? 1u : 0u;
+    api_override_active = ChassisApiOverrideIsActive();
+    serial_control_allowed = ChassisSerialControlIsAllowed();
+    rc_manual_enabled = (rc_online && rc_ctrl.rc_channels[2] >= 300u) ? 1u : 0u;
+    rc_override_active = (rc_manual_enabled &&
+                          (rc_vy_raw > RC_MOVE_DEADBAND ||
+                           rc_vy_raw < -RC_MOVE_DEADBAND ||
+                           rc_vx_raw > RC_MOVE_DEADBAND ||
+                           rc_vx_raw < -RC_MOVE_DEADBAND ||
+                           rc_yaw_raw > RC_YAW_DEADBAND ||
+                           rc_yaw_raw < -RC_YAW_DEADBAND)) ? 1u : 0u;
+    serial_motion_pending = (nx16_ctrl.RxFlag != 0u &&
+                             nx16_ctrl.CommandID != CMD_STOP &&
+                             nx16_ctrl.CommandID != CMD_INIT) ? 1u : 0u;
+
+    // 串口运动控制只依赖遥控器在线；通道 2 仅作为手动控制使能。
+    if (!serial_control_allowed &&
+        (api_override_active || nx16_ctrl.InTask != 0u || serial_motion_pending))
     {
-        if (api_override_active && !serial_control_allowed)
-        {
-            ChassisClearApiCommand();
-        }
+        ChassisClearApiCommand();
+        api_override_active = 0u;
         move_direct_wheel_mode = 0u;
         nx16_ctrl.InTask = 0;
         nx16_ctrl.RxFlag = 0;
-        nx16_ctrl.Status = STATUS_IDLE;
+        nx16_ctrl.Status = STATUS_CMD_FAILED;
         rc_ctrl.chassis_vx = 0.0f;
         rc_ctrl.chassis_vy = 0.0f;
         rc_ctrl.chassis_wz = 0.0f;
@@ -351,29 +440,40 @@ static void OmniCalculate()
         rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
     }
     // 遥控器始终最高优先级：有效运动输入立即撤销串口/API 控制。
-    else if (rc_override_active)
+    else if (rc_override_active &&
+             (api_override_active || nx16_ctrl.InTask != 0u || serial_motion_pending))
     {
         ChassisClearApiCommand();
+        api_override_active = 0u;
         move_direct_wheel_mode = 0u;
         nx16_ctrl.InTask = 0;
         nx16_ctrl.RxFlag = 0;
-        nx16_ctrl.Status = STATUS_IDLE;
+        nx16_ctrl.Status = STATUS_CMD_FAILED;
     }
 
     // 只有在非任务模式下，遥控摇杆才直接生成底盘速度指令
-    if(nx16_ctrl.InTask == 0)
+    if(nx16_ctrl.InTask == 0 && !api_override_active)
     {
-        if (rc_vy_raw > RC_MOVE_DEADBAND || rc_vy_raw < -RC_MOVE_DEADBAND)
-            rc_ctrl.chassis_vx = (float)rc_vy_raw * 1.15f;
-        else rc_ctrl.chassis_vx = 0.0f;
+        if (rc_manual_enabled)
+        {
+            if (rc_vy_raw > RC_MOVE_DEADBAND || rc_vy_raw < -RC_MOVE_DEADBAND)
+                rc_ctrl.chassis_vx = (float)rc_vy_raw * 1.15f;
+            else rc_ctrl.chassis_vx = 0.0f;
 
-        if (rc_vx_raw > RC_MOVE_DEADBAND || rc_vx_raw < -RC_MOVE_DEADBAND)
-            rc_ctrl.chassis_vy = (float)rc_vx_raw * 1.15f;
-        else rc_ctrl.chassis_vy = 0.0f;
-       
-        if (rc_ctrl.rc_channels[2] - 242 > 20 )
-            rc_ctrl.chassis_k = (float)(((rc_ctrl.rc_channels[2] - 242)/256)+1) * 1.15f;
-        else rc_ctrl.chassis_k = 1.0f;
+            if (rc_vx_raw > RC_MOVE_DEADBAND || rc_vx_raw < -RC_MOVE_DEADBAND)
+                rc_ctrl.chassis_vy = (float)rc_vx_raw * 1.15f;
+            else rc_ctrl.chassis_vy = 0.0f;
+
+            if (rc_ctrl.rc_channels[2] - 242 > 20 )
+                rc_ctrl.chassis_k = (float)(((rc_ctrl.rc_channels[2] - 242)/256)+1) * 1.15f;
+            else rc_ctrl.chassis_k = 1.0f;
+        }
+        else
+        {
+            rc_ctrl.chassis_vx = 0.0f;
+            rc_ctrl.chassis_vy = 0.0f;
+            rc_ctrl.chassis_k = 1.0f;
+        }
     }
 
     if (ChassisGetHeading(&heading))
@@ -384,9 +484,10 @@ static void OmniCalculate()
     /* 非任务模式下由 yaw 摇杆直接控制旋转。
      * 闭环任务执行时必须保留任务设置的目标角，不能在摇杆居中时覆盖它。
      */
-    if (nx16_ctrl.InTask == 0u)
+    if (nx16_ctrl.InTask == 0u && !api_override_active)
     {
-        if (rc_yaw_raw > RC_YAW_DEADBAND || rc_yaw_raw < -RC_YAW_DEADBAND)
+        if (rc_manual_enabled &&
+            (rc_yaw_raw > RC_YAW_DEADBAND || rc_yaw_raw < -RC_YAW_DEADBAND))
         {
             rc_ctrl.chassis_wz = -(float)rc_yaw_raw * 0.8f;
         }
@@ -410,6 +511,14 @@ static void OmniCalculate()
             nx16_ctrl.InTask = 0;
             nx16_ctrl.Status = STATUS_IDLE;
             FinishTask(STATUS_CMD_SUCCESS);
+        }
+        else if (nx16_ctrl.CommandID == CMD_INIT)
+        {
+            TaskInit();
+            Nx16ResetProtocolState();
+            nx16_ctrl.CommandID = CMD_INIT;
+            nx16_ctrl.LastCommandID = CMD_INIT;
+            nx16_ctrl.Status = STATUS_IDLE;
         }
         else if (nx16_ctrl.InTask == 0) 
         {
@@ -457,12 +566,9 @@ static void OmniCalculate()
                     move_direct_wheel_mode = 0u;
                     rc_ctrl.chassis_vx = 0.0f;
                     rc_ctrl.chassis_vy = 0.0f;
-                    nx16_ctrl.TaskTime = 30000;
-                    rc_ctrl.chassis_k = 8.05f;
-                    Chassis_follow_pid.shell.shell_i_part = 0.0f;
-                    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
-                    Chassis_follow_pid.shell.shell_out = 0.0f;
-                    rotate_finish_hold_count = 0u;
+                    Chassis_SetTaskTimeout(ROTATE_TASK_TIMEOUT_MS);
+                    rc_ctrl.chassis_k = 1.0f;
+                    Chassis_ResetRotateControl();
                     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
                     rc_ctrl.target_angle_class = heading.yaw_total_deg + nx16_ctrl.CoreInstruction.YawAngle;
                     nx16_ctrl.InTask = 3;
@@ -474,7 +580,7 @@ static void OmniCalculate()
                 chassis_api_mode = CHASSIS_API_MODE_PATH_TRACKING;
                 rc_ctrl.chassis_vx = 0.0f;
                 rc_ctrl.chassis_vy = 0.0f;
-                nx16_ctrl.TaskTime = 30000;
+                Chassis_SetTaskTimeout(30000u);
                 rc_ctrl.chassis_k = 8.0f;
                 ResetPathIndex();
                 nx16_ctrl.InTask = 4;
@@ -483,19 +589,17 @@ static void OmniCalculate()
         }
         
         nx16_ctrl.RxFlag = 0;
-        if(nx16_ctrl.CommandID != CMD_STOP) nx16_ctrl.Status = STATUS_EXECUTING;
+        if(nx16_ctrl.InTask != 0u) nx16_ctrl.Status = STATUS_EXECUTING;
     }
     
     if (nx16_ctrl.InTask != 0 && nx16_ctrl.RxFlag == 0)
     {
-        if (nx16_ctrl.TaskTime > 0) nx16_ctrl.TaskTime--;
-
         switch (nx16_ctrl.InTask)
         {
             case 1:
             case 2:
                 if (!ChassisClosedLoopFeedbackReady()) FinishTask(STATUS_CMD_FAILED);
-                else if (nx16_ctrl.TaskTime < 300) FinishTask(STATUS_CMD_FAILED);
+                else if (Chassis_TaskTimedOut()) FinishTask(STATUS_CMD_FAILED);
                 else Chassis_UpdateMoveTask();
                 break;
             case 3:
@@ -503,32 +607,31 @@ static void OmniCalculate()
                 {
                     FinishTask(STATUS_CMD_FAILED);
                 }
-                else if (nx16_ctrl.TaskTime < 300) FinishTask(STATUS_CMD_FAILED);
+                else if (Chassis_TaskTimedOut()) FinishTask(STATUS_CMD_FAILED);
                 else {
                     float angle_error;
+                    uint32_t now_ms;
                     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
-                    angle_error = fabsf(rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class);
-                    if (angle_error <= ROTATE_FINISH_YAW_DEG &&
+                    angle_error = rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class;
+                    rc_ctrl.chassis_wz = Chassis_UpdateRotateControl(angle_error,
+                                                                     heading.gyro_z_dps);
+                    now_ms = HAL_GetTick();
+                    if (fabsf(angle_error) <= ROTATE_FINISH_YAW_DEG &&
                         fabsf(heading.gyro_z_dps) <= ROTATE_FINISH_RATE_DPS)
                     {
-                        Chassis_follow_pid.shell.shell_i_part = 0.0f;
-                        rc_ctrl.chassis_wz = 0.0f;
-                        if (rotate_finish_hold_count < ROTATE_FINISH_HOLD_TICK) rotate_finish_hold_count++;
-                        if (rotate_finish_hold_count >= ROTATE_FINISH_HOLD_TICK)
+                        if (!rotate_stable_active)
+                        {
+                            rotate_stable_active = 1u;
+                            rotate_stable_since_ms = now_ms;
+                        }
+                        if ((now_ms - rotate_stable_since_ms) >= ROTATE_FINISH_HOLD_MS)
                         {
                             FinishTask(STATUS_CMD_SUCCESS);
                         }
                     }
                     else
                     {
-                        float rotate_output;
-                        rotate_finish_hold_count = 0u;
-                        rotate_output = Chassis_Follow_Control(rc_ctrl.target_angle_class,
-                                                              rc_ctrl.feedback_angle_class,
-                                                              &Chassis_follow_pid);
-                        if (rotate_output > ROTATE_CONTROL_MAX) rotate_output = ROTATE_CONTROL_MAX;
-                        if (rotate_output < -ROTATE_CONTROL_MAX) rotate_output = -ROTATE_CONTROL_MAX;
-                        rc_ctrl.chassis_wz = rotate_output;
+                        rotate_stable_active = 0u;
                     }
                 }
                 break;
@@ -537,7 +640,16 @@ static void OmniCalculate()
                     float current_yaw_rad = nx16_ctrl.current_yaw * DEG_TO_RAD;
                     TrajectoryPoint_t *use_points;
                     size_t use_len;
-                    Nx16_TrySwitchActive_DefaultSafe();
+                    if (Chassis_TaskTimedOut())
+                    {
+                        FinishTask(STATUS_CMD_FAILED);
+                        break;
+                    }
+                    if (Nx16_TrySwitchActive_DefaultSafe())
+                    {
+                        Chassis_SetTaskTimeout(30000u);
+                        ResetPathIndex();
+                    }
                     Nx16_GetDynamicPath((void**)&use_points, &use_len);
                     
                     Nx16SwitchMode_t Current_Switch_Mode = GetNx16_Switch_mode();
@@ -546,6 +658,7 @@ static void OmniCalculate()
                         bool safe_to_switch = true;
                         if(Nx16_TrySwitchActive(safe_to_switch))
                         {
+                            Chassis_SetTaskTimeout(30000u);
                             ResetPathIndex();
                             Nx16_GetDynamicPath((void**)&use_points, &use_len);
                         }
@@ -769,10 +882,6 @@ static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m)
     float s_world;
     HWT9053Heading_t heading;
 
-    Chassis_follow_pid.shell.shell_i_part = 0.0f;
-    Chassis_follow_pid.shell.shell_delta_last = 0.0f;
-    Chassis_follow_pid.shell.shell_out = 0.0f;
-
     move_start_fused_x = g_odom.pose.x_m;
     move_start_fused_y = g_odom.pose.y_m;
     move_start_x = g_odom.pose.encoder_x_m;
@@ -803,7 +912,7 @@ static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m)
     move_filtered_lateral_vel = 0.0f;
     move_cmd_forward_mps = 0.0f;
     move_cmd_lateral_mps = 0.0f;
-    move_finish_hold_count = 0u;
+    move_finish_since_ms = 0u;
     move_finish_latched = 0u;
     move_slip_hold_count = 0u;
 
@@ -816,10 +925,10 @@ static void Chassis_StartPolarMoveTask(float angle_deg, float distance_m)
     rc_ctrl.target_angle_class = move_start_yaw_deg;
     rc_ctrl.chassis_vx = 0.0f;
     rc_ctrl.chassis_vy = 0.0f;
-    rc_ctrl.chassis_k = 4.05f;
+    rc_ctrl.chassis_k = 1.0f;
     Chassis_SetMoveWheelSpeed(0.0f, 0.0f, 0.0f);
     move_direct_wheel_mode = 1u;
-    nx16_ctrl.TaskTime = MOVE_TASK_TIMEOUT_TICK;
+    Chassis_SetTaskTimeout(MOVE_TASK_TIMEOUT_MS);
 }
 
 static void Chassis_UpdateMoveTask(void)
@@ -869,9 +978,11 @@ static void Chassis_UpdateMoveTask(void)
     }
     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
     rc_ctrl.target_angle_class = move_start_yaw_deg;
-    rc_ctrl.chassis_wz = Chassis_Follow_Control(rc_ctrl.target_angle_class,
-                                                rc_ctrl.feedback_angle_class,
-                                                &Chassis_follow_pid);
+    rc_ctrl.chassis_wz = (rc_ctrl.target_angle_class - rc_ctrl.feedback_angle_class) *
+                         MOVE_HEADING_KP_ERPM_DEG -
+                         heading.gyro_z_dps * MOVE_HEADING_KD_ERPM_DPS;
+    if (rc_ctrl.chassis_wz > MOVE_HEADING_MAX_ERPM) rc_ctrl.chassis_wz = MOVE_HEADING_MAX_ERPM;
+    if (rc_ctrl.chassis_wz < -MOVE_HEADING_MAX_ERPM) rc_ctrl.chassis_wz = -MOVE_HEADING_MAX_ERPM;
 
     fused_forward = (-dx_world * s0 + dy_world * c0);
     fused_lateral = dx_world * c0 + dy_world * s0;
@@ -939,19 +1050,18 @@ static void Chassis_UpdateMoveTask(void)
         fabsf(lateral_vel) <= MOVE_FINISH_SPEED_MPS)
     {
         move_finish_latched = 1u;
-        move_finish_hold_count = 0u;
+        move_finish_since_ms = now_tick_ms;
         move_cmd_forward_mps = 0.0f;
         move_cmd_lateral_mps = 0.0f;
     }
 
     if (move_finish_latched)
     {
-        // 命中终点后先保持几拍，再结束任务，避免临界抖动反复触发
+        // 命中终点后按真实时间保持停止，再结束任务。
         rc_ctrl.chassis_vx = 0.0f;
         rc_ctrl.chassis_vy = 0.0f;
         Chassis_SetMoveWheelSpeed(0.0f, 0.0f, rc_ctrl.chassis_wz);
-        if (move_finish_hold_count < MOVE_FINISH_HOLD_TICK) move_finish_hold_count++;
-        if (move_finish_hold_count >= MOVE_FINISH_HOLD_TICK)
+        if ((now_tick_ms - move_finish_since_ms) >= MOVE_FINISH_HOLD_MS)
         {
             FinishTask(STATUS_CMD_SUCCESS);
             return;
@@ -1025,17 +1135,17 @@ void TaskInit(void)
     // QEKF_INS.Yaw_Zxj = 0; // 保留注释，避免重置世界坐标系
     rc_ctrl.target_angle_class = 0;
 	
-    HWT9053CAN_SetYawZero();
     rc_ctrl.feedback_angle_class = 0;
 	
 	
     // 里程计清零
     OdomXDrive_ResetAllWithImuZero(&g_odom);
     move_direct_wheel_mode = 0u;
-    move_finish_hold_count = 0u;
+    move_finish_since_ms = 0u;
     move_finish_latched = 0u;
     move_slip_hold_count = 0u;
-    rotate_finish_hold_count = 0u;
+    chassis_task_deadline_ms = 0u;
+    Chassis_ResetRotateControl();
     target_distance = 0.0f;
     target_forward_distance = 0.0f;
     target_lateral_distance = 0.0f;
@@ -1057,15 +1167,7 @@ static void App_InitOdomOnce(void)
     /* 2) 初始化：只执行一次，重复调用不会重复初始化 */
     OdomXDrive_InitOnce(&g_odom, &cfg);
 
-    /* 3) 绑定四个逻辑轮位对应的 VESC，里程计直接读取真实反馈 */
-    OdomXDrive_BindVESC(&g_odom,
-                        VESC_LF_OUTPUT_ID,
-                        VESC_RF_OUTPUT_ID,
-                        VESC_LB_OUTPUT_ID,
-                        VESC_RB_OUTPUT_ID);
-
-    /* 4) 一键复位：IMU 清零并同步清空里程计 */
-    OdomXDrive_ResetAllWithImuZero(&g_odom);
+    /* ChassisInit() immediately calls TaskInit(), which performs the reset. */
 }
 
 /* ===========================
@@ -1098,6 +1200,7 @@ void FinishTask(uint8_t status)
     
     nx16_ctrl.InTask = 0;
     nx16_ctrl.TaskTime = 0;
+    chassis_task_deadline_ms = 0u;
     nx16_ctrl.RxFlag = 0; 
 
     move_direct_wheel_mode = 0u;
@@ -1115,10 +1218,10 @@ void FinishTask(uint8_t status)
     move_cmd_lateral_mps = 0.0f;
     move_filtered_forward_vel = 0.0f;
     move_filtered_lateral_vel = 0.0f;
-    move_finish_hold_count = 0u;
+    move_finish_since_ms = 0u;
     move_finish_latched = 0u;
     move_slip_hold_count = 0u;
-    rotate_finish_hold_count = 0u;
+    Chassis_ResetRotateControl();
 
     nx16_ctrl.Status = status;
     nx16_ctrl.LastCommandID = nx16_ctrl.CommandID; 
@@ -1128,13 +1231,4 @@ void FinishTask(uint8_t status)
     
     // 任务结束后保持当前角度，不做回弹
     rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
-}
-
-int16_t Chassis_Follow_Control(float target, float feedback, One_PID_Para_t *pid)
-{
-    float error = target - feedback;
-    float abs_error = (error >= 0) ? error : -error;
-
-    if (abs_error <= 1.0f) return 0;
-    return One_Pid_Ctrl(target, feedback, pid);
 }

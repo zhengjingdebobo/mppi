@@ -1,8 +1,376 @@
 # STM32 VESC 底盘工程交接摘要
 
-更新时间：2026-07-24
+更新时间：2026-07-27
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
+
+## 2026-07-27 定角旋转实车收敛（当前最高优先级状态）
+
+> 本节是当前最新权威状态，优先级高于后续 2026-07-25 及更早章节。
+> 定角旋转已经完成左右 20°/90° 实车验证，四项均由旋转任务本身返回成功，
+> 不是超时后 STOP 的假成功。不要再恢复原始 yaw 直接闭环、旧左右方向约定、
+> 旧 750 ERPM 死区补偿或自动写入 IMU 永久配置。
+
+### 今日确认的根因与最终方案
+
+1. HWT9053 原始累计 yaw 存在与真实运动不一致的瞬时跳变。四组日志中原始 yaw
+   单次跳变约 `7°~37°`，同期 `gyro_z` 连续且接近静止；原始 yaw 直接参与闭环时，
+   控制器会误判过冲并反向，造成抽搐或超时。
+2. 曾尝试用“yaw 增量与 gyro 一致性门限”过滤坏角度帧，但门限错误拒绝了大部分
+   正常帧，使 `imu_online=0`、闭环反馈就绪检查失败、四轮目标恒为零。该方案已经
+   完整撤回，不要恢复。
+3. 当前定角控制航向由 HWT9053 的 `gyro_z` 在 200 Hz 数据回调中使用梯形积分获得。
+   `HWT9053CAN_GetHeading()` 返回该连续积分航向和角速度；原始 yaw 仍保留在遥测中，
+   仅用于诊断，不再干扰定角闭环。
+4. `INIT` 通过 `OdomXDrive_ResetAllWithImuZero()` 调用 `HWT9053CAN_SetYawZero()`，
+   同时清零原始 yaw 零点和 gyro 积分控制航向。
+5. 实车方向保持当前已经验证的约定：物理左转时控制航向减小，物理右转时控制航向
+   增加。Python V2 方向映射保持现状，不要仅根据枚举名称反转实际方向。
+6. 电机存在明显静摩擦死区。右转 20°末段曾在四轮目标约 `869 ERPM` 时反馈为零，
+   停在约 `1.26°` 误差处。当前旋转静摩擦补偿为：
+
+```c
+#define ROTATE_DEADZONE_ERPM 900.0f
+```
+
+   仅在 `|angle_error| > 1°` 时加入该补偿；进入完成角度窗口后立即撤销补偿，
+   由 PD 阻尼停车，避免到点持续顶住电机。
+
+### 当前定角控制参数
+
+```c
+ROTATE_KP_ERPM_PER_DEG  = 55
+ROTATE_KD_ERPM_PER_DPS  = 12
+ROTATE_DEADZONE_ERPM    = 900
+ROTATE_CONTROL_MAX_ERPM = 2600
+ROTATE_MAX_ACCEL_ERPM_S = 8000
+ROTATE_TASK_TIMEOUT_MS  = 30000
+```
+
+完成条件：
+
+```text
+|angle_error| <= 1.0 deg
+|gyro_z|      <= 3.0 deg/s
+连续保持      >= 250 ms
+```
+
+### 2026-07-27 最终四组实车结果
+
+| 测试 | MCU 结果 | 完成时间 | 最终误差 | 峰值角速度 | 停车残余角速度 |
+|---|---|---:|---:|---:|---:|
+| 左转 20° | ROTATE SUCCESS | 1.83 s | -0.47° | 24.3°/s | 0.12°/s |
+| 右转 20° | ROTATE SUCCESS | 1.66 s | +0.71° | 23.8°/s | 0.06°/s |
+| 左转 90° | ROTATE SUCCESS | 4.30 s | -0.51° | 32.8°/s | 0.06°/s |
+| 右转 90° | ROTATE SUCCESS | 4.28 s | +0.49° | 34.2°/s | 0.06°/s |
+
+四次测试均满足：
+
+- `imu_online=1`；
+- 左右响应基本对称；
+- 控制航向连续，变化与 gyro 一致；
+- 任务由对应旋转命令返回成功；
+- 停车后无持续抽搐；
+- 最终误差均处于 ±1°完成窗口内。
+
+对应日志：
+
+```text
+keil/rotate_left_20.csv
+keil/rotate_right_20.csv
+keil/rotate_left_90.csv
+keil/rotate_right_90.csv
+```
+
+`test_v2_protocol.py` 的旋转 CSV 同时记录：
+
+- `yaw_total_deg`：真正用于闭环的连续控制航向；
+- `raw_imu_yaw_total_deg`：可能跳变的原始传感器累计 yaw；
+- `angle_error_deg`、`gyro_z_dps`、四轮 Ref/Fdb、IMU/VESC 在线状态和任务状态。
+
+### IMU 自动配置的重要禁令
+
+实车曾确认 `HWT9053CAN_Config200HzPermanent()` 自动写入会造成 CAN2 连续超时，
+并可能使原本正常的 IMU 接收在约 3 秒后冻结。`StartDAEMONTASK()` 中的自动调用
+已经删除。显式配置函数可以保留为维护接口，但正常底盘运行不得自动调用。
+
+### 当前构建与下一会话入口
+
+```text
+Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
+固件：     keil/MDK-ARM/work_Zxj/work_Zxj.hex
+HEX 时间： 2026-07-27 10:11:57
+构建结果： 0 Error(s)
+```
+
+下一会话不要继续盲调定角 Kp/Kd。建议按顺序验证：
+
+1. 左右连续重复旋转各 5 次，确认积分零点、重复精度和热机后死区一致性。
+2. 旋转过程中轻推有效遥控摇杆，确认立即抢占、串口任务返回失败且手动控制接管。
+3. 仅关闭遥控器通道 2 时，已运行的串口任务不应被取消；遥控器掉线时必须立即停车。
+4. 验证 STOP 不清零位姿、INIT 清零 gyro 积分航向和里程计。
+5. 定角确认后再继续定距离前后/横移和定速度标定，不要同时修改旋转与里程计参数。
+
+本次主要修改文件：
+
+```text
+keil/CUBOT/Cubot_User_Config/control_logic.c
+keil/CUBOT/Cubot_devices/hwt9053_can.c
+keil/CUBOT/Cubot_modules/chassis.c
+keil/car_controlst.py
+keil/test_v2_protocol.py
+keil/PROJECT_VESC_CHANGE_SUMMARY.md
+```
+
+## 2026-07-25 定角闭环控制审查与确定性改造（当前权威状态）
+
+> 本节记录 2026-07-25 的最新代码状态，优先级高于本文后续历史章节。
+> 后文提到的旧旋转 PI 参数、`1 ms` 电机周期、旧完成窗口、STATUS 反馈为目标值、
+> `STOP/INIT` 都可能重置航向、串口 `9600` 等描述已经失效，不应再据此调试。
+
+### 本次任务目标和必须保持的行为
+
+1. 遥控器开环前进、后退、横移和旋转保持可用。
+2. 串口运动控制仅在遥控器在线时允许，当前：
+
+```c
+#define CHASSIS_SERIAL_CONTROL_REQUIRE_RC 1u
+```
+
+3. 遥控器优先级最高。遥控器在线、通道 2 手动使能且运动摇杆越过正常死区时，
+   立即终止串口速度/定距/定角任务，并向上位机报告任务失败。
+4. 通道 2 仅控制遥控器手动运动是否使能，不再作为串口控制的额外使能条件。
+5. VESC 自身已经执行电机转速闭环，STM32 只生成并发送四轮目标 ERPM；
+   STM32 不再为 VESC 四轮叠加第二层轮速 PID。
+
+### 原问题的主要根因
+
+- 旧定角控制实际接近高输出开关控制：误差略大于死区便产生很大轮速，随后直接饱和，
+  到点时又从大输出切到零，容易过冲、回弹和反复进入/退出完成窗口。
+- 旧积分没有乘真实 `dt`，而机器人任务和电机任务使用 `osDelay(1)`，实际周期受调度影响，
+  因此同一套参数可能出现不同响应。
+- FreeRTOS 默认空任务以普通优先级持续空转，会干扰控制任务调度。
+- V2 串口解析在 UART 回调中直接调用 `ChassisRotateInPlace()`、定距和速度 API，
+  中断上下文与底盘任务同时修改状态，存在时序竞争。
+- 遥控器抢占死区和正常手动死区不一致，且通道 2 对手动、串口安全逻辑的含义混杂。
+- IMU 在线状态只检查“任意 CAN 帧”的最后时间；加速度或磁场帧持续更新时，
+  陈旧的 yaw/gyro 仍可能被当成有效闭环反馈。
+- STATUS 帧原来的 `LF/RF/LB/RB Fdb` 字段实际上发送目标 RPM，无法判断真实跟随效果。
+- Python 旋转等待以目标角度的 `8%` 作为容差，保持 `0.15 s` 即提前返回成功，
+  没有等待 MCU 的低角速度稳定判定；包角差算法还无法可靠处理超过 `180°` 的任务。
+
+### 已实施的控制修改
+
+#### 1. 固定控制周期和任务优先级
+
+```text
+Robot task:  5 ms / 200 Hz, osPriorityAboveNormal
+Motor task:  5 ms / 200 Hz, osPriorityNormal
+Daemon task: 10 ms / 100 Hz, osPriorityBelowNormal
+Default task: osPriorityIdle，循环内 osDelay(1000)
+```
+
+- Robot、Motor、Daemon 均改用 `vTaskDelayUntil()`，避免执行时间导致周期漂移。
+- 删除了这些任务中只写不读的 DWT 调试计时量和额外时间读取。
+- VESC 目标发送现在由 Motor task 以固定 200 Hz 执行，每周期发送四个 SET_RPM 帧，
+  不再以约 1 kHz 发送。
+
+#### 2. 定角旋转改为航向 PD + 斜率限制
+
+当前控制律：
+
+```text
+target_erpm = angle_error_deg * Kp - gyro_z_dps * Kd
+```
+
+当前保守初始参数：
+
+```c
+ROTATE_KP_ERPM_PER_DEG  = 55
+ROTATE_KD_ERPM_PER_DPS  = 12
+ROTATE_CONTROL_MAX_ERPM = 2600
+ROTATE_MAX_ACCEL_ERPM_S = 8000
+ROTATE_TASK_TIMEOUT_MS  = 30000
+```
+
+完成条件必须连续满足：
+
+```text
+|angle_error| <= 1.0 deg
+|gyro_z|      <= 3.0 deg/s
+持续时间       >= 250 ms
+```
+
+- 旋转控制不再调用 `Chassis_Follow_Control()` 或 `Chassis_follow_pid`。
+- 删除了旋转积分状态，避免没有 `dt` 的积分累积和积分残留。
+- 输出使用真实控制周期计算斜率限制，接近目标时连续减小，不再在死区边界跳变。
+- 超时和稳定保持均基于 `HAL_GetTick()` 的真实毫秒，不再依赖循环次数。
+- 当前参数只是可开始实车测试的保守值，尚未完成实车最终整定。
+
+#### 3. 定距离控制的同步修正
+
+- 定距离航向保持改为角度 P + gyro 阻尼，当前参数：
+
+```c
+MOVE_HEADING_KP_ERPM_DEG = 70
+MOVE_HEADING_KD_ERPM_DPS = 10
+MOVE_HEADING_MAX_ERPM    = 600
+```
+
+- 定距离任务超时改为真实 `30000 ms`。
+- 到点停止保持由固定 6 次循环改为真实 `250 ms`。
+- 路径跟踪增加真实超时检查；切换 active path 后重置真实截止时间。
+- 初始化时不再连续两次执行 IMU yaw 和里程计清零。
+
+#### 4. 串口命令改为任务上下文执行
+
+- V2 UART 回调现在只负责帧头、帧尾、checksum、命令和 sequence 校验，
+  然后写入单槽待处理邮箱。
+- `Nx16ProcessPendingCommand()` 在 `OmniCalculate()` 开始时消费邮箱并调用底盘 API。
+- STOP/INIT 可以覆盖尚未执行的普通命令；普通命令不会覆盖待处理命令。
+- V2 仍按 `(command_id, sequence)` 去重，避免相对旋转或相对位移重复执行。
+- legacy `CMD_INIT` 也已延后到机器人任务执行，不再在 UART 回调中调用 `TaskInit()`。
+- legacy 路径点上传状态机目前仍在 UART 回调中维护；如果后续继续重构串口并发，
+  应把 legacy 命令和路径数据也整体改为队列/双缓冲任务化。
+
+#### 5. 遥控器抢占和安全规则
+
+当前手动与抢占使用同一组死区：
+
+```text
+平移死区：35
+旋转死区：80
+```
+
+处理顺序：
+
+```text
+消费串口待处理命令
+    -> 检查遥控器是否在线
+    -> 检查有效遥控器运动输入是否抢占
+    -> 执行串口任务或生成遥控器手动目标
+    -> 输出四轮目标
+```
+
+- 遥控器掉线时，正在运行的串口运动任务立即失败并清零输出。
+- 遥控器在线但通道 2 关闭时，手动轮速保持为零，但串口任务可以继续执行。
+- 遥控器手动输入只在确有串口 API/任务/待执行运动命令时触发“抢占失败”状态，
+  普通手动驾驶不会每周期错误地把状态写成失败。
+- V2 STOP 只停车和结束任务，不再调用 `TaskInit()`，因此不会重置 IMU yaw 或里程计。
+- INIT 才执行任务、协议接收状态、IMU yaw 和里程计复位。
+
+### IMU、反馈和上位机修改
+
+- `HWT9053CAN_t` 增加 `last_yaw_tick` 和 `last_gyro_tick`。
+- `HWT9053CAN_IsOnline()` 现在要求 yaw 与 gyro 都有数据，且两者分别在最近 `200 ms` 更新。
+- `HWT9053CAN_GetHeading()` 的时间戳使用真实 yaw 帧时间。
+- HWT9053 永久 200 Hz 配置在低优先级 Daemon task 检测到传感器在线后尝试一次，
+  避免其阻塞延时进入 200 Hz 控制任务。当前失败后不会自动重试。
+- STATUS 帧的四轮 Fdb 字段改为 `VESCMotorGetLogicalFeedbackERPM()`，现在是真实 ERPM。
+- `USARTIsReady()` 原来的按位或判断恒为 busy，现已改为检查句柄和 `HAL_UART_STATE_READY`。
+- TX 队列空间不足会正确增加错误计数，不再无条件把发送状态记为 `HAL_OK`。
+- `car_controlst.py::_wait_for_rotate_feedback()` 现在等待对应 MCU 命令返回
+  `STATUS_CMD_SUCCESS`，不再根据宽松包角容差提前成功；超过 `180°` 的旋转由 MCU
+  累计 yaw 闭环决定，不再受 Python `[-180°, 180°]` 包角差限制。
+
+### VESC 闭环和冗余代码结论
+
+- 当前有效链路仍是：
+
+```text
+OmniCalculate / 闭环任务生成逻辑轮 ERPM
+    -> LimitChassisOutput()
+    -> VESCMotorSetFourRPM()
+    -> Motor task 200 Hz 调用 VESCMotorControl()
+    -> VESC 内部执行电机转速闭环
+```
+
+- 没有在这条 VESC 链路中调用 `One_Pid_Ctrl()` 或 STM32 轮速 PID。
+- `Chassis_speed_pid` 不能直接删除，因为 `dji_motor.c` 的 DJI 电机路径仍有真实引用；
+  但当前 VESC 底盘路径不会使用它。
+- `Chassis_follow_pid` 的旧定义仍在 `pid.c`，当前底盘已无引用，链接器会丢弃；
+  后续统一转换旧 PID 文件编码时可删除该定义和头文件 extern。
+- 已删除 `Nx16ControlIsOnline()`、`NX_to_sbus()`、无引用 NX16 daemon/command 变量、
+  以及里程计中只保存但从不读取的 VESC ID 绑定字段和函数。
+
+### 当前串口、固件和构建状态
+
+```text
+Agent UART: USART1 / huart1
+Baud rate:  115200
+Keil 工程:  keil/MDK-ARM/work_Zxj.uvprojx
+HEX:        keil/MDK-ARM/work_Zxj/work_Zxj.hex
+HEX 时间:   2026-07-25 22:56:28
+```
+
+验证：
+
+```text
+Python: python -m py_compile keil/car_controlst.py 通过
+Keil:   0 Error(s)，AXF 和 HEX 已生成
+最终增量构建：0 Error(s), 34 Warning(s)
+前一次全量重构建：0 Error(s), 57 Warning(s)
+```
+
+剩余警告主要来自工程原有的 `func()` 空参数声明、旧模块未使用变量、
+`seasky_protocol.c` 缺少 `memcpy` 声明和 path tracker 的 float/double 写法。
+它们不阻止当前固件生成，但后续可独立清理。Keil 构建会更新
+`keil/MDK-ARM/work_Zxj/` 下的 `.crf/.htm/.dep` 生成文件。
+
+### 尚未完成的实车验证
+
+本次只完成代码审查、修改、Python 语法检查和 Keil 构建，没有烧录或运行实车。
+旧固件的 `20°` 过冲结果不能用于当前 PD 参数判断。
+
+下一次必须按以下顺序继续：
+
+1. 烧录时间为 `2026-07-25 22:56:28` 的最新 HEX。
+2. 架空或低速确认遥控器前后、横移、左右旋转方向仍正确。
+3. 遥控器在线且摇杆归中，分别执行左/右 `20°`、`90°`，每个方向至少重复 5 次。
+4. 保存每次目标角、累计 yaw、angle error、gyro_z、四轮目标 ERPM、四轮反馈 ERPM、
+   MCU 最终状态和完成时间，先判断重复性，再调参数。
+5. 若方向错误，只核对 `HWT9053_CONTROL_YAW_SIGN` 和 Python V2 方向约定，
+   不要同时修改电机方向、IMU 符号和控制器符号。
+6. 若稳定但整体响应慢，逐步增加 `ROTATE_KP_ERPM_PER_DEG`；若接近目标仍过冲，
+   优先增加 `ROTATE_KD_ERPM_PER_DPS` 或降低最大 ERPM/加速度限制。
+7. 定角重复性确认后，再测试前进/后退小距离，然后左移/右移小距离，
+   最后进行定速度前进。不要同时调整定角和里程比例参数。
+8. 测试遥控器优先级：串口旋转过程中轻推有效摇杆，应立即切换手动并让串口任务失败；
+   仅关闭通道 2 时，已运行的串口任务不应被取消。
+9. 测试 STOP/INIT 语义：STOP 后位姿不应清零，INIT 后 yaw 与里程计应归零。
+
+推荐复测命令使用当前 `115200` 波特率：
+
+```cmd
+.venv\Scripts\python.exe keil\test_v2_protocol.py --port COM12 --baudrate 115200 --only rotate --rotate-left --rotate-angle 20 --rotate-timeout 8 --settle 1.5
+.venv\Scripts\python.exe keil\test_v2_protocol.py --port COM12 --baudrate 115200 --only rotate --rotate-right --rotate-angle 20 --rotate-timeout 8 --settle 1.5
+```
+
+### 本次实际修改文件
+
+```text
+keil/CUBOT/Cubot_User_Config/control_logic.c
+keil/CUBOT/Cubot_User_Config/hardware_config.c
+keil/CUBOT/Cubot_devices/hwt9053_can.c
+keil/CUBOT/Cubot_devices/hwt9053_can.h
+keil/CUBOT/Cubot_devices/nx16.c
+keil/CUBOT/Cubot_devices/nx16.h
+keil/CUBOT/Cubot_devices/odom_xdrive.c
+keil/CUBOT/Cubot_devices/odom_xdrive.h
+keil/CUBOT/Cubot_driver/drv_usart.c
+keil/CUBOT/Cubot_modules/chassis.c
+keil/CUBOT/Cubot_modules/chassis.h
+keil/Src/freertos.c
+keil/car_controlst.py
+```
+
+一句话续接状态：
+
+```text
+定角控制已完成确定性 200 Hz 调度、PD + gyro 阻尼、真实时间稳定判定、
+串口任务化和遥控器优先级修正，并通过 Keil 编译；下一步不要继续盲改参数，
+先烧录 2026-07-25 22:56:28 HEX，重复测试左右 20°/90°并记录 yaw、gyro 和真实 ERPM。
+```
 
 ## 2026-07-24 四轮符号、IMU 接口和闭环更新
 
@@ -999,7 +1367,7 @@ ClearCommError failed (PermissionError(13, '设备不识别此命令。'))
 这是 PC 串口监听/驱动层问题，与 MCU 旋转角度控制分开判断。复测时确保 COM12
 没有被其他串口程序占用；若发生错误，关闭所有占用程序后重新运行脚本。
 
-### 最新固件与构建状态
+### 历史固件与构建状态（已被文档顶部 2026-07-25 状态取代）
 
 ```text
 Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
@@ -1011,7 +1379,7 @@ HEX：      keil/MDK-ARM/work_Zxj/work_Zxj.hex
 警告主要是工程原有的旧式函数声明、隐式声明和未使用变量；本次修改涉及的
 `chassis.c`、`nx16.c` 均为 `0 errors`。
 
-### 下次 CMD 复测命令
+### 历史 CMD 复测命令（不要直接使用，按文档顶部 115200 命令复测）
 
 先确认最新 HEX 已烧录，遥控器在线且摇杆归中。左转 20°：
 
@@ -1026,8 +1394,8 @@ HEX：      keil/MDK-ARM/work_Zxj/work_Zxj.hex
 ```
 
 重点保存每次的 `0.80s` 状态、`旋转后状态`、`STATUS yaw_total`、
-`IMU yaw_total`、`gyro_z` 和四轮目标/反馈。不要使用“最终停止”后的 yaw
-判断旋转精度，因为 STOP/INIT 可能重置航向零点。
+`IMU yaw_total`、`gyro_z` 和四轮目标/反馈。当前 STOP 不重置航向或里程计，
+只有 INIT 会清零；若测试脚本最后发送 INIT，应使用 INIT 之前保存的 yaw 判断精度。
 
 ### 本次主要修改文件
 
@@ -1049,21 +1417,22 @@ keil/test_v2_protocol.py
 继续工作前按顺序阅读：
 
 ```text
-1. 本文档
-2. CUBOT/Cubot_devices_Motor/vesc_motor.h
-3. CUBOT/Cubot_devices_Motor/vesc_motor.c
-4. CUBOT/Cubot_driver/drv_can.c
-5. CUBOT/Cubot_modules/chassis.c
-6. CUBOT/Cubot_devices/odom_xdrive.c
-7. CUBOT/Cubot_devices/nx16.c
-8. keil/test_v2_protocol.py
-9. keil/agent_uart_live_receiver.py
+1. 本文档顶部“2026-07-25 定角闭环控制审查与确定性改造”
+2. CUBOT/Cubot_modules/chassis.c
+3. CUBOT/Cubot_devices/nx16.c
+4. CUBOT/Cubot_devices/hwt9053_can.c
+5. CUBOT/Cubot_User_Config/control_logic.c
+6. CUBOT/Cubot_devices_Motor/vesc_motor.c
+7. CUBOT/Cubot_devices/odom_xdrive.c
+8. keil/car_controlst.py
+9. keil/test_v2_protocol.py
 ```
 
 一句话续接状态：
 
 ```text
-四轮符号、V2 前后左右移动和 IMU 在线问题均已解决；
-下一步烧录 2026-07-24 12:10:34 的最新 HEX，先复测左右 20° 定角精度，
-确认 V2 去重/禁止重入效果，再继续四方向定距离闭环标定。
+定角控制已改为确定性 200 Hz 航向 PD，串口命令已移出 UART 中断，
+遥控器抢占、IMU 新鲜度、真实 VESC 反馈和 STOP/INIT 语义均已修正；
+下一步烧录 2026-07-25 22:56:28 HEX，以 115200 波特率重复测试左右 20°/90°，
+记录 yaw、gyro_z、四轮目标/反馈后再调 Kp/Kd，随后继续定距离和定速度标定。
 ```

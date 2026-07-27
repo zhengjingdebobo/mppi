@@ -105,7 +105,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityIdle, 0, 128);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -127,7 +127,7 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-        
+    osDelay(1000);
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -136,18 +136,18 @@ void StartDefaultTask(void const * argument)
 //{
 //  /* USER CODE BEGIN StartDefaultTask */
 //  
-//  // 1. ¶¨ÒåÒ»¸ö»º³åÇø
+//  // 1. å®šä¹‰ä¸€ä¸ªç¼“å†²åŒº
 //  char print_buf[64]; 
 
 //  /* Infinite loop */
 //  for(;;)
 //  {
-//    // 2. Ê¹ÓÃ sprintf ½øĞĞ¸ñÊ½»¯
-//    // ×¢Òâ£ºWindows ´®¿ÚÖúÊÖÍ¨³£ĞèÒª \r\n ²ÅÄÜÕıÈ·»»ĞĞ
+//    // 2. ä½¿ç”¨ sprintf è¿›è¡Œæ ¼å¼åŒ–
+//    // æ³¨æ„ï¼šWindows ä¸²å£åŠ©æ‰‹é€šå¸¸éœ€è¦ \r\n æ‰èƒ½æ­£ç¡®æ¢è¡Œ
 //    sprintf(print_buf, "150.5,200.0\r\n"); 
 //    
-//    // 3. Ê¹ÓÃ HAL ¿âÖ±½Ó·¢ËÍ
-//    // ²ÎÊı£º´®¿Ú¾ä±ú£¬Êı¾İÖ¸Õë£¬Êı¾İ³¤¶È£¬³¬Ê±Ê±¼ä
+//    // 3. ä½¿ç”¨ HAL åº“ç›´æ¥å‘é€
+//    // å‚æ•°ï¼šä¸²å£å¥æŸ„ï¼Œæ•°æ®æŒ‡é’ˆï¼Œæ•°æ®é•¿åº¦ï¼Œè¶…æ—¶æ—¶é—´
 //    HAL_UART_Transmit(&huart6, (uint8_t*)print_buf, strlen(print_buf), 100);
 //    
 //    osDelay(500);

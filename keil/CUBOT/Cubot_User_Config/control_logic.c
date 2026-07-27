@@ -13,18 +13,15 @@ osThreadId uiTaskHandle;
 
 
 
-// ¹ßµ¼
-// ¸ºÔğ¶ÁÈ¡ IMU£¨Èç BMI088£©Êı¾İ£¬½øĞĞ×ËÌ¬½âËã£¨¿¨¶ûÂüÂË²¨µÈ£©
+// æƒ¯å¯¼
+// è´Ÿè´£è¯»å– IMUï¼ˆå¦‚ BMI088ï¼‰æ•°æ®ï¼Œè¿›è¡Œå§¿æ€è§£ç®—ï¼ˆå¡å°”æ›¼æ»¤æ³¢ç­‰ï¼‰
 __attribute__((noreturn)) void StartINSTASK(void const *argument)
 {
-    static float ins_start;
-    static float ins_dt;
-    INS_Init(); // È·±£BMI088±»ÕıÈ·³õÊ¼»¯.
+    INS_Init(); // ç¡®ä¿BMI088è¢«æ­£ç¡®åˆå§‹åŒ–.
 //    LOGINFO("[freeRTOS] INS Task Start");
     for (;;)
     {
         // 1kHz
-        ins_start = DWT_GetTimeline_ms();
         INS_Task();       
         osDelay(1);
     }
@@ -33,37 +30,32 @@ __attribute__((noreturn)) void StartINSTASK(void const *argument)
 
 
 
-// µç»ú
+// ç”µæœº
 __attribute__((noreturn)) void StartMOTORTASK(void const *argument)
 {
-    static float motor_dt;
-    static float motor_start;
+    TickType_t last_wake = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(5u);
    // LOGINFO("[freeRTOS] MOTOR Task Start");
     for (;;)
     {
-        motor_start = DWT_GetTimeline_ms();
-        MotorControlTask(); // CAN·¢ËÍ & PID
-        motor_dt = DWT_GetTimeline_ms() - motor_start;
-        osDelay(1);
+        MotorControlTask(); // CANå‘é€ & PID
+		vTaskDelayUntil(&last_wake, period);
 		
     }
 }
 
-// ÊØ»¤ÈÎÎñ
+// å®ˆæŠ¤ä»»åŠ¡
 __attribute__((noreturn)) void StartDAEMONTASK(void const *argument)
 {
-    static float daemon_dt;
-    static float daemon_start;
+    TickType_t last_wake = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(10u);
   //  BuzzerInit();
    
     for (;;)
     {
         // 100Hz
-        daemon_start = DWT_GetTimeline_ms();
-        DaemonTask(); // Í¨³£´¦ÀíÓÅÏÈ¼¶½ÏµÍµÄÊÂÎñ
-        daemon_dt = DWT_GetTimeline_ms() - daemon_start;
-		
-        osDelay(10);
+        DaemonTask(); // é€šå¸¸å¤„ç†ä¼˜å…ˆçº§è¾ƒä½çš„äº‹åŠ¡
+        vTaskDelayUntil(&last_wake, period);
     }
 }
 
@@ -71,19 +63,14 @@ __attribute__((noreturn)) void StartDAEMONTASK(void const *argument)
 
 __attribute__((noreturn)) void StartROBOTTASK(void const *argument)
 {
-    static float robot_dt;
-    static float robot_start;
+    TickType_t last_wake = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(5u);
 
-    // 200Hz-500Hz,ÈôÓĞ¶îÍâµÄ¿ØÖÆÈÎÎñÈçÆ½ºâ²½±ø¿ÉÄÜĞèÒªÌáÉıÖÁ1kHz
+    // 200Hz-500Hz,è‹¥æœ‰é¢å¤–çš„æ§åˆ¶ä»»åŠ¡å¦‚å¹³è¡¡æ­¥å…µå¯èƒ½éœ€è¦æå‡è‡³1kHz
     for (;;)
     {
-        robot_start = DWT_GetTimeline_ms();
         ChassisTask();
-		
-		
-        robot_dt = DWT_GetTimeline_ms() - robot_start;
-      
-        osDelay(1); // 1ms loop for 300Hz IMU telemetry; ÈÃ³öCPU ½øÈë×èÈû×´Ì¬
+        vTaskDelayUntil(&last_wake, period);
     }
 }
 
@@ -121,7 +108,7 @@ __attribute__((noreturn)) void StartROBOTTASK(void const *argument)
 //#include "hardware_config.h"
 //#include "keyboard_mouse_ctrl.h"
 ///**
-//  * @brief  ¶¨Ê±Æ÷ÖĞ¶Ï»Øµ÷
+//  * @brief  å®šæ—¶å™¨ä¸­æ–­å›è°ƒ
 //  */
 
 
@@ -145,10 +132,10 @@ __attribute__((noreturn)) void StartROBOTTASK(void const *argument)
 
 
 //  referee_draw_supercap_data(tim1.UI_ClockTime, referee2022.game_robot_status.robot_id, my_cap.Voltage, 0, 1,my_cap.mode); ///supercap
-//	referee_draw_NUC_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id, 1);                     //µçÈİÊı×Ö
+//	referee_draw_NUC_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id, 1);                     //ç”µå®¹æ•°å­—
 //	referee_draw_chassis_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id, mpuAngle.pitch,gyro_data.yaw_angle,Hero_Holder.Pitch.Can_Angle,-Hero_Holder.Yaw.Can_Angle);  //angle 
-//	referee_draw_Load_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id, (Hero_Chassis.ChassisState.ING_Spin%2), Hero_Chassis.ChassisState.Follow, Hero_Shoot.Mode.Shoot, Hero_Holder.Flag.Long_distance_shoot_model); //±êÖ¾Î»
-//	referee_draw_shoot_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id);   //Ê®×ÖÏß
+//	referee_draw_Load_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id, (Hero_Chassis.ChassisState.ING_Spin%2), Hero_Chassis.ChassisState.Follow, Hero_Shoot.Mode.Shoot, Hero_Holder.Flag.Long_distance_shoot_model); //æ ‡å¿—ä½
+//	referee_draw_shoot_data(tim1.UI_ClockTime , referee2022.game_robot_status.robot_id);   //åå­—çº¿
 
 
 ////ANO_V6_Send_Up_Computer(&huart5 ,Hero_Holder.Yaw.Target_Angle*100,Hero_Holder.Yaw.Angle*100,Hero_Holder.Pitch.Target_Angle*100,Hero_Holder.Pitch.Angle*100,(int16_t)Hero_Vision.cnt_vision_ALL,0);
@@ -185,7 +172,7 @@ __attribute__((noreturn)) void StartROBOTTASK(void const *argument)
 //	}
 //	
 //	
-//		// Ä¿±êËÙ¶È ·´À¡ËÙ¶È ×î´ó¹¦ÂÊ »º´æÄÜÁ¿ ±ÈÀıÏµÊı
+//		// ç›®æ ‡é€Ÿåº¦ åé¦ˆé€Ÿåº¦ æœ€å¤§åŠŸç‡ ç¼“å­˜èƒ½é‡ æ¯”ä¾‹ç³»æ•°
 //	
 //	if((tim1.ClockTime%4)==1)
 //	{

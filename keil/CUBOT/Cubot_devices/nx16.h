@@ -56,7 +56,7 @@ void Nx16_RequestSwitch(Nx16SwitchMode_t mode);
  */
 bool Nx16_TrySwitchActive(bool safe_to_switch);
 
-Nx16SwitchMode_t GetNx16_Switch_mode();
+Nx16SwitchMode_t GetNx16_Switch_mode(void);
 static inline bool Nx16_TrySwitchActive_DefaultSafe(void)
 {
     return Nx16_TrySwitchActive(true);
@@ -140,13 +140,11 @@ extern  BrainCore_t nx16_ctrl;
 // */
 BrainCore_t *Nx16ControlInit(UART_HandleTypeDef *nx16_usart_handle);
 
-/**
- * @brief 检查NX16是否在线,若尚未初始化也视为离线
- *
- * @return uint8_t 1:在线 0:离线
- */
-uint8_t Nx16ControlIsOnline();
+/* Execute validated V2 commands from the chassis task, never from UART IRQ context. */
+void Nx16ProcessPendingCommand(void);
 
+/* Clear command de-duplication and path receive state during an explicit reset. */
+void Nx16ResetProtocolState(void);
 
 /**
  * @brief 发送状态与里程计反馈帧给Agent。

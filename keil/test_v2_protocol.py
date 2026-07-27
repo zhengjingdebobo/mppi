@@ -54,7 +54,11 @@ V2 串口协议底盘控制测试脚本
 """
 
 import argparse
+import csv
+from datetime import datetime
+from pathlib import Path
 import sys
+import threading
 import time
 
 from car_controlst import CarController
@@ -94,6 +98,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rpm-step", type=int, default=50, help="死区测试步进 RPM")
     parser.add_argument("--rpm-duration", type=float, default=0.4, help="每档 RPM 持续时间 s")
     parser.add_argument("--settle", type=float, default=0.8, help="步骤间等待时间 s")
+    parser.add_argument("--log-file", default="", help="调试 CSV 路径；旋转测试默认自动生成")
+    parser.add_argument("--log-rate", type=float, default=50.0, help="调试 CSV 采样频率 Hz")
     parser.add_argument("--verbose", action="store_true", help="详细输出所有调试字段")
     return parser
 
@@ -145,6 +151,123 @@ def _require_ok(ok: bool, step_name: str) -> None:
     else:
         print(f"  ✗ {step_name} 失败")
         raise RuntimeError(f"{step_name} 失败")
+
+
+def _snapshot_rotate(car: CarController, started_at: float, target_yaw: float) -> dict:
+    """原子读取一份旋转调试快照，避免各接收帧更新到一半。"""
+    with car.lock:
+        imu = dict(car.last_imu)
+        wheels = tuple(float(v) for v in car.debug_motro_vel)
+        cmd = tuple(float(v) for v in car.debug_cmd_vel)
+        in_task = float(car.debug_cmd_vel_true[2])
+        status = int(car.current_status)
+        last_cmd = int(car.last_feedback_cmd_id)
+        vesc = dict(car.vesc_feedback)
+        control_yaw = float(car.odom_yaw_deg)
+        # 状态接收层为了渲染把负角映射到了 [0, 360)，日志恢复为最接近
+        # 本次目标的连续等价角，避免左转显示成 340°/270°。
+        control_yaw += 360.0 * round((target_yaw - control_yaw) / 360.0)
+
+    raw_yaw = float(imu.get("yaw_total_deg", 0.0))
+    return {
+        "pc_elapsed_s": time.monotonic() - started_at,
+        "stm32_us": int(imu.get("stm32_us", 0)),
+        "status": status,
+        "status_name": _status_name(status),
+        "last_cmd_id": last_cmd,
+        "in_task": in_task,
+        "target_yaw_deg": target_yaw,
+        "yaw_total_deg": control_yaw,
+        "raw_imu_yaw_total_deg": raw_yaw,
+        "angle_error_deg": target_yaw - control_yaw,
+        "gyro_z_dps": float(imu.get("gyro_z_dps", 0.0)),
+        "cmd_wz_erpm": cmd[2],
+        "lf_ref": wheels[0], "lf_fdb": wheels[1],
+        "rf_ref": wheels[2], "rf_fdb": wheels[3],
+        "lb_ref": wheels[4], "lb_fdb": wheels[5],
+        "rb_ref": wheels[6], "rb_fdb": wheels[7],
+        "lf_online": int(vesc.get("lf_online", 0)),
+        "rf_online": int(vesc.get("rf_online", 0)),
+        "lb_online": int(vesc.get("lb_online", 0)),
+        "rb_online": int(vesc.get("rb_online", 0)),
+        "imu_online": int(imu.get("online", 0)),
+        "imu_state": int(imu.get("state", 0)),
+        "imu_valid_count": int(imu.get("valid_count", 0)),
+        "imu_gyro_count": int(imu.get("gyro_count", 0)),
+        "imu_yaw_count": int(imu.get("yaw_count", 0)),
+        "imu_error_count": int(imu.get("error_count", 0)),
+        "imu_hal_error_count": int(imu.get("hal_error_count", 0)),
+        "imu_config_attempt_count": int(imu.get("config_attempt_count", 0)),
+        "imu_config_tx_count": int(imu.get("config_tx_count", 0)),
+        "imu_config_tx_error_count": int(imu.get("config_tx_error_count", 0)),
+    }
+
+
+def run_rotate_with_log(car: CarController, args, rotate_left: bool) -> bool:
+    """执行阻塞式旋转命令，同时记录闭环时间序列 CSV。"""
+    _, initial_yaw = car.get_odom_state()
+    # 当前实车约定：左转累计 yaw 减小，右转累计 yaw 增加。
+    signed_angle = -args.rotate_angle if rotate_left else args.rotate_angle
+    target_yaw = initial_yaw + signed_angle
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    direction = "left" if rotate_left else "right"
+    log_path = Path(args.log_file or f"rotate_debug_{direction}_{args.rotate_angle:g}deg_{stamp}.csv")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    period = 1.0 / max(1.0, min(args.log_rate, 200.0))
+    stop_event = threading.Event()
+    rows = []
+    started_at = time.monotonic()
+
+    def sample_loop() -> None:
+        next_sample = time.monotonic()
+        next_print = next_sample
+        while not stop_event.is_set():
+            row = _snapshot_rotate(car, started_at, target_yaw)
+            rows.append(row)
+            now = time.monotonic()
+            if now >= next_print:
+                print(
+                    f"  t={row['pc_elapsed_s']:6.2f}s "
+                    f"yaw={row['yaw_total_deg']:8.2f}° "
+                    f"err={row['angle_error_deg']:+7.2f}° "
+                    f"gyro={row['gyro_z_dps']:+7.2f}°/s "
+                    f"wz={row['cmd_wz_erpm']:+7.0f} "
+                    f"ref=({row['lf_ref']:+.0f},{row['rf_ref']:+.0f},"
+                    f"{row['lb_ref']:+.0f},{row['rb_ref']:+.0f}) "
+                    f"state={row['status_name']}/{row['in_task']:.0f}"
+                )
+                next_print = now + 0.10
+            next_sample += period
+            stop_event.wait(max(0.0, next_sample - time.monotonic()))
+
+    sampler = threading.Thread(target=sample_loop, name="rotate-debug-sampler", daemon=True)
+    sampler.start()
+    try:
+        ok = car.rotate_in_place_v2(rotate_left, args.rotate_angle, timeout=args.rotate_timeout)
+        time.sleep(0.35)
+    finally:
+        stop_event.set()
+        sampler.join(timeout=1.0)
+
+    if not rows:
+        rows.append(_snapshot_rotate(car, started_at, target_yaw))
+    with log_path.open("w", newline="", encoding="utf-8-sig") as fp:
+        writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    final = rows[-1]
+    peak_gyro = max(abs(r["gyro_z_dps"]) for r in rows)
+    peak_ref = max(abs(r[k]) for r in rows for k in ("lf_ref", "rf_ref", "lb_ref", "rb_ref"))
+    yaw_count_delta = rows[-1]["imu_yaw_count"] - rows[0]["imu_yaw_count"]
+    print(f"  调试日志: {log_path.resolve()}")
+    print(
+        f"  汇总: target={target_yaw:.2f}° final={final['yaw_total_deg']:.2f}° "
+        f"final_error={final['angle_error_deg']:+.2f}° "
+        f"peak|gyro|={peak_gyro:.2f}°/s peak|wheel_ref|={peak_ref:.0f} ERPM "
+        f"yaw_count_delta={yaw_count_delta}"
+    )
+    return ok
 
 
 # ---------------------------------------------------------------------------
@@ -284,9 +407,7 @@ def main() -> int:
         if args.only in ("all", "rotate"):
             direction_text = "左转" if rotate_left else "右转"
             print(f"\n── 原地旋转: {direction_text} {args.rotate_angle:.1f}° ──")
-            ok = car.rotate_in_place_v2(
-                rotate_left, args.rotate_angle, timeout=args.rotate_timeout,
-            )
+            ok = run_rotate_with_log(car, args, rotate_left)
             _require_ok(ok, "原地旋转")
             time.sleep(args.settle)
             print_state(car, "旋转后", verbose)

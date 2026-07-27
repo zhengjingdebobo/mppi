@@ -100,12 +100,6 @@ typedef struct
     OdomXDrive_Config_t cfg;
     OdomXDrive_Pose2D_t pose;
 
-    /* 四个逻辑轮位对应的 VESC ID */
-    uint8_t vesc_id_lf;
-    uint8_t vesc_id_rf;
-    uint8_t vesc_id_lb;
-    uint8_t vesc_id_rb;
-
     /* 角度增量积分的首次运行标志 */
     uint8_t first_run;
 
@@ -136,13 +130,6 @@ OdomXDrive_Config_t OdomXDrive_GetDefaultConfig(void);
 
 /* 一次性初始化里程计 */
 void OdomXDrive_InitOnce(OdomXDrive_t *odom, const OdomXDrive_Config_t *cfg);
-
-/* 绑定四个逻辑轮位对应的 VESC ID */
-void OdomXDrive_BindVESC(OdomXDrive_t *odom,
-                         uint8_t vesc_id_lf,
-                         uint8_t vesc_id_rf,
-                         uint8_t vesc_id_lb,
-                         uint8_t vesc_id_rb);
 
 /* IMU 清零并同步清空里程计 */
 void OdomXDrive_ResetAllWithImuZero(OdomXDrive_t *odom);

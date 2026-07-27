@@ -217,20 +217,6 @@ void OdomXDrive_InitOnce(OdomXDrive_t *odom, const OdomXDrive_Config_t *cfg)
     odom_reset_filter(odom);
 }
 
-void OdomXDrive_BindVESC(OdomXDrive_t *odom,
-                         uint8_t vesc_id_lf,
-                         uint8_t vesc_id_rf,
-                         uint8_t vesc_id_lb,
-                         uint8_t vesc_id_rb)
-{
-    if (!odom) return;
-
-    odom->vesc_id_lf = vesc_id_lf;
-    odom->vesc_id_rf = vesc_id_rf;
-    odom->vesc_id_lb = vesc_id_lb;
-    odom->vesc_id_rb = vesc_id_rb;
-}
-
 void OdomXDrive_ResetAllWithImuZero(OdomXDrive_t *odom)
 {
     if (!odom || !odom->inited) return;

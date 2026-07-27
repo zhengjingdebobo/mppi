@@ -37,6 +37,8 @@ typedef struct
     uint32_t error_count;
     uint32_t hal_error_count;
     uint32_t last_tick;
+    uint32_t last_yaw_tick;
+    uint32_t last_gyro_tick;
     uint32_t last_std_id;
     uint32_t last_ext_id;
     uint32_t last_ide;
