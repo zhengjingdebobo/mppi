@@ -24,6 +24,7 @@
 #define CMD2_STOP                 0x24 // 停止当前 API 覆盖或任务
 #define CMD2_INIT                 0x25 // 复位任务/路径接收状态
 #define CMD2_HEARTBEAT            0x26 // 心跳保活，当前仅记账不触发动作
+#define CMD2_ROTATE_SPEED         0x27 // 按给定车体角速度持续原地旋转
 
 
 // --- [新增] 状态码常量 (小车 -> Agent) ---
@@ -145,6 +146,9 @@ void Nx16ProcessPendingCommand(void);
 
 /* Clear command de-duplication and path receive state during an explicit reset. */
 void Nx16ResetProtocolState(void);
+
+/* 持续速度模式使用的 V2 链路看门狗。 */
+uint8_t Nx16V2LinkIsAlive(uint32_t timeout_ms);
 
 /**
  * @brief 发送状态与里程计反馈帧给Agent。

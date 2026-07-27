@@ -134,6 +134,18 @@ ChassisApiResult_e ChassisMoveByAngleAndDistance(float angle_deg, float distance
  */
 ChassisApiResult_e ChassisRotateInPlace(ChassisRotateDir_e dir, float angle_deg);
 
+/**
+ * @brief 按给定方向和车体角速度持续原地旋转。
+ *
+ * @param dir 旋转方向：CHASSIS_ROTATE_LEFT 为物理左转，CHASSIS_ROTATE_RIGHT 为物理右转。
+ * @param angular_speed_dps 车体角速度绝对值，单位 deg/s。
+ *
+ * @note
+ * - 这是持续速度命令，不会自动结束；发送零角速度或 STOP 可退出。
+ * - 控制器使用 IMU gyro_z 做角速度闭环，VESC 继续负责单轮 ERPM 闭环。
+ */
+ChassisApiResult_e ChassisRotateAtSpeed(ChassisRotateDir_e dir, float angular_speed_dps);
+
 #endif
 
 

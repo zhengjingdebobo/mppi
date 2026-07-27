@@ -4,7 +4,141 @@
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
 
-## 2026-07-27 定距离任意方向控制重构（待实车验证）
+## 下一次工作直接入口
+
+当前代码基线：
+
+- 定角旋转已经完成左右 `20° / 90°` 实车验证；
+- 定距离平移已经完成 `0° / 90° / 270° / 45° / 315°` 实车验证，用户反馈效果良好；
+- 任意方向定速平移和定角速度旋转代码已经完成整改并通过 Keil 编译；
+- 新增的两种持续速度控制尚未实车标定，下一次不要先改定距或定角参数。
+
+下一次直接烧录以下固件：
+
+```text
+keil/MDK-ARM/work_Zxj/work_Zxj.hex
+生成时间：2026-07-27 20:49:15
+```
+
+然后按以下顺序测试。
+
+### 1. 任意方向定速平移
+
+先以保守速度测试 `0° / 90° / 270° / 45° / 315°`，重点观察启动是否平滑、
+方向比例是否保持、航向是否被锁住，以及四轮 Ref/Fdb 是否正常跟随。
+
+```powershell
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 0   --speed-mps 0.08 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 90  --speed-mps 0.06 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 270 --speed-mps 0.06 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 45  --speed-mps 0.08 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 315 --speed-mps 0.08 --speed-duration 5
+```
+
+如果车辆方向正确但航向缓慢漂移，再调整 `MOVE_HEADING_KP_ERPM_DEG` 和
+`MOVE_HEADING_KD_ERPM_DPS`；如果启动冲击或达到目标速度太慢，再调整二维矢量使用的
+`MOVE_MAX_ACCEL_MPS2 / MOVE_MAX_DECEL_MPS2`。不要对前向和横向分别限斜率。
+
+### 2. 定角速度旋转
+
+按左右 `10 / 20 / 30 deg/s`、每档约 `5 s` 测试，先从 `10 deg/s` 开始：
+
+```powershell
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-speed-dps 10 --rotate-speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-right --rotate-speed-dps 10 --rotate-speed-duration 5
+```
+
+记录每档稳定段的目标角速度、`gyro_z_dps` 平均值/波动、四轮 Ref/Fdb、启动时间、
+左右对称性和 STOP 后残余角速度。调参顺序为：
+
+1. 先用稳定段数据标定 `ROTATE_RATE_STATIC_ERPM` 和 `ROTATE_RATE_KF_ERPM_DPS`；
+2. 再调 `ROTATE_RATE_KP_ERPM_DPS` 改善跟随；
+3. 最后小幅调整 `ROTATE_RATE_KI_ERPM_DPS_S` 消除稳态误差；
+4. 在前馈未基本正确前，不要靠增大积分补偿。
+
+持续模式必须由更新后的 `car_controlst.py` 运行，因为它会自动发送 `10 Hz` 心跳；
+MCU 超过 `500 ms` 没收到有效 V2 帧会主动停车。测试中还必须验证关闭上位机或断开串口后
+车辆能在超时窗口内停车，以及遥控器摇杆输入能够立即抢占。
+
+## 2026-07-27 任意方向定速平移与定角速度旋转整改（待实车标定）
+
+用户已确认定距离 `90° / 270° / 45° / 315°` 实车测试效果良好，因此本次整改保留
+已有定距离和定角控制参数，不改它们的状态机与完成条件。
+
+### 任意方向定速平移
+
+V2 `CMD2_MOVE_POLAR_SPEED (0x21)` 原链路已经存在，但旧执行逻辑每周期把目标航向
+重置为当前航向、旋转修正量清零，并将目标速度直接阶跃到四轮。本次改为：
+
+- 接收命令时冻结 gyro 积分累计航向，持续平移期间使用与定距离一致的航向
+  `P + gyro D` 修正；
+- 对前向/横向组成的二维速度差向量统一做加减速限制，保持合成方向；
+- 负速度统一转换为“方向角加 180°、速度取正”；
+- 使用横向能力计算方向相关速度上限：
+  `min(0.22, 0.08 / |sin(angle)|) m/s`；
+- 速度模式要求 IMU 与四轮 VESC 反馈在线。
+
+### 定角速度旋转
+
+新增持续命令：
+
+```text
+CMD2_ROTATE_SPEED = 0x27
+param1: 1=物理左转，0=物理右转
+param2: 目标车体角速度绝对值，单位 deg/s
+```
+
+底盘新增 `ChassisRotateAtSpeed()` 和 `CHASSIS_API_MODE_ROTATE_VELOCITY`。控制器直接闭环
+`HWT9053 gyro_z`，输出为：
+
+```text
+旋转 ERPM = 静摩擦前馈 + 角速度前馈 + 角速度 PI
+```
+
+当前首轮保守参数：
+
+```c
+ROTATE_RATE_MIN_DPS       = 5
+ROTATE_RATE_MAX_DPS       = 30
+ROTATE_RATE_STATIC_ERPM   = 900
+ROTATE_RATE_KF_ERPM_DPS   = 45
+ROTATE_RATE_KP_ERPM_DPS   = 25
+ROTATE_RATE_KI_ERPM_DPS_S = 15
+ROTATE_RATE_I_MAX_ERPM    = 500
+```
+
+这些参数只用于首次低风险实车测试，尚未标记为最终标定值。物理左转按当前已确认的
+IMU 符号转换为负 `gyro_z` 目标，物理右转为正目标。
+
+### 持续命令安全保护与上位机
+
+- `car_controlst.py` 新增 `rotate_with_speed()`；
+- 上位机在任一持续速度模式激活时自动以 `10 Hz` 发送 V2 心跳；
+- 心跳在 UART 解析处直接更新时间戳，不占用单槽命令邮箱；
+- MCU 对持续平移/旋转使用 `500 ms` 链路超时，超时、IMU 掉线、VESC 掉线、
+  遥控器掉线或遥控器有效运动输入抢占时立即清零输出并报告失败；
+- 定距离、定角和路径任务不使用该心跳超时，避免改变已验证任务行为；
+- `test_v2_protocol.py` 新增 `--only rotate-speed`、`--rotate-speed-dps` 和
+  `--rotate-speed-duration`。
+
+首次实车建议按左右 `10 / 20 / 30 deg/s`、每档约 `5 s` 测试，并观察
+`gyro_z_dps`、四轮 Ref/Fdb、稳态误差、左右对称性和 STOP 后残余角速度。
+
+构建状态：
+
+```text
+Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
+固件：    keil/MDK-ARM/work_Zxj/work_Zxj.hex
+HEX 时间：2026-07-27 20:49:15
+构建结果：0 Error(s), 4 Warning(s)
+```
+
+4 个 warning 均来自已有头文件的旧式无参数声明，不是本次控制代码新增警告。
+
+## 2026-07-27 定距离任意方向控制重构（已完成首轮实车验证）
+
+`90° / 270° / 45° / 315°` 已完成实车测试，用户反馈效果良好。当前没有精密外部测量值，
+因此只能确认控制链路、方向和收敛表现可用，不能据此宣称绝对距离精度已经完成最终标定。
 
 前进 `0.20 m` 首次实车测试由 MCU 正常返回成功，里程计结果为：
 

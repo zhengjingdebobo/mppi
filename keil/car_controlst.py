@@ -31,6 +31,7 @@ class CarController:
     CMD2_STOP = 0x24
     CMD2_INIT = 0x25
     CMD2_HEARTBEAT = 0x26
+    CMD2_ROTATE_SPEED = 0x27
 
     STATUS_IDLE = 0x00
     STATUS_EXECUTING = 0x01
@@ -94,6 +95,9 @@ class CarController:
         self.last_feedback_cmd_id = 0
         
         self.listener_thread: Optional[threading.Thread] = None
+        self.heartbeat_thread: Optional[threading.Thread] = None
+        self.continuous_command_active = threading.Event()
+        self.heartbeat_period_s = 0.10
         self.lock = threading.Lock()
         self.serial_lock = threading.RLock()
         self.imu_log_path: Optional[str] = None
@@ -159,6 +163,8 @@ class CarController:
             self.is_running = True
             self.listener_thread = threading.Thread(target=self._listen_for_data, daemon=True)
             self.listener_thread.start()
+            self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+            self.heartbeat_thread.start()
             return True
         except serial.SerialException as e:
             self.listener_error = str(e)
@@ -166,10 +172,13 @@ class CarController:
             return False
 
     def disconnect(self):
+        self.continuous_command_active.clear()
         self.is_running = False
         current_thread = threading.current_thread()
         if self.listener_thread and self.listener_thread.is_alive() and self.listener_thread is not current_thread:
             self.listener_thread.join()
+        if self.heartbeat_thread and self.heartbeat_thread.is_alive() and self.heartbeat_thread is not current_thread:
+            self.heartbeat_thread.join()
         with self.serial_lock:
             if self.ser and self.ser.is_open:
                 try:
@@ -178,6 +187,14 @@ class CarController:
                     pass
             self.ser = None
         self.close_imu_log()
+
+    def _heartbeat_loop(self):
+        """Keep continuous V2 velocity modes alive; MCU stops them after link timeout."""
+        while self.is_running:
+            if self.continuous_command_active.is_set():
+                if not self.send_heartbeat_v2():
+                    self.continuous_command_active.clear()
+            time.sleep(self.heartbeat_period_s)
 
     def start_imu_log(self, path: Optional[str] = None):
         if path is None:
@@ -709,6 +726,7 @@ class CarController:
 
     def initialize_car_v2(self) -> bool:
         """Send V2 init command to reset task state and API override state."""
+        self.continuous_command_active.clear()
         if not self._send_command_v2(self.CMD2_INIT):
             return False
         time.sleep(1.5)
@@ -767,7 +785,31 @@ class CarController:
         if not self._serial_is_open():
             self.listener_error = self.listener_error or "serial not connected"
             return False
-        return self._send_command_v2(self.CMD2_MOVE_POLAR_SPEED, angle_deg, speed_mps)
+        ok = self._send_command_v2(self.CMD2_MOVE_POLAR_SPEED, angle_deg, speed_mps)
+        if ok and abs(speed_mps) >= 1e-4:
+            self.continuous_command_active.set()
+        elif ok:
+            self.continuous_command_active.clear()
+        return ok
+
+    def rotate_with_speed(self, turn_left: bool, angular_speed_dps: float) -> bool:
+        """
+        V2 协议持续定角速度原地旋转。
+        turn_left=True 为物理左转；angular_speed_dps 单位 deg/s，允许范围由 MCU 校验。
+        """
+        if not self._serial_is_open():
+            self.listener_error = self.listener_error or "serial not connected"
+            return False
+        ok = self._send_command_v2(
+            self.CMD2_ROTATE_SPEED,
+            1.0 if turn_left else 0.0,
+            abs(angular_speed_dps),
+        )
+        if ok and abs(angular_speed_dps) >= 1e-4:
+            self.continuous_command_active.set()
+        elif ok:
+            self.continuous_command_active.clear()
+        return ok
 
     def move_with_angle_distance(self, angle_deg: float, distance_m: float, timeout: float = 10.0) -> bool:
         """
@@ -781,6 +823,7 @@ class CarController:
             self.listener_error = self.listener_error or "serial not connected"
             return False
 
+        self.continuous_command_active.clear()
         legacy_cmd = self.CMD_MOVE_FORWARD if distance_m > 0 else self.CMD_MOVE_BACKWARD
         self._prepare_blocking_command(legacy_cmd)
         if not self._send_command_v2(self.CMD2_MOVE_POLAR_DISTANCE, angle_deg, distance_m):
@@ -808,6 +851,7 @@ class CarController:
             self.listener_error = self.listener_error or "serial not connected"
             return False
 
+        self.continuous_command_active.clear()
         # STM32 枚举方向与当前实车安装方向相反：
         # 左转发送 RIGHT，右转发送 LEFT，保持已经实车确认的方向。
         legacy_cmd = self.CMD_ROTATE_CW if turn_left else self.CMD_ROTATE_CCW
@@ -845,11 +889,13 @@ class CarController:
 
     def stop(self):
         """Send stop command when serial is alive."""
+        self.continuous_command_active.clear()
         if self._serial_is_open():
             self._send_command(self.CMD_STOP)
 
     def stop_v2(self):
         """Send V2 stop command when serial is alive."""
+        self.continuous_command_active.clear()
         if self._serial_is_open():
             self._send_command_v2(self.CMD2_STOP)
 

@@ -51,6 +51,14 @@
 #define ROTATE_FINISH_RATE_DPS     3.0f
 #define ROTATE_FINISH_HOLD_MS      250u
 #define ROTATE_TASK_TIMEOUT_MS     30000u
+#define VELOCITY_LINK_TIMEOUT_MS   500u
+#define ROTATE_RATE_MIN_DPS        5.0f
+#define ROTATE_RATE_MAX_DPS        30.0f
+#define ROTATE_RATE_STATIC_ERPM    900.0f
+#define ROTATE_RATE_KF_ERPM_DPS    45.0f
+#define ROTATE_RATE_KP_ERPM_DPS    25.0f
+#define ROTATE_RATE_KI_ERPM_DPS_S  15.0f
+#define ROTATE_RATE_I_MAX_ERPM     500.0f
 #define RC_MOVE_DEADBAND           35
 #define RC_YAW_DEADBAND            80
 #define CHASSIS_WZ_DEADBAND        8.0f
@@ -90,6 +98,14 @@ static float rotate_cmd_erpm = 0.0f;
 static uint32_t rotate_last_tick_ms = 0u;
 static uint32_t rotate_stable_since_ms = 0u;
 static uint8_t rotate_stable_active = 0u;
+static float velocity_hold_yaw_deg = 0.0f;
+static float velocity_cmd_forward_mps = 0.0f;
+static float velocity_cmd_right_mps = 0.0f;
+static uint32_t velocity_last_tick_ms = 0u;
+static float rotate_rate_target_dps = 0.0f;
+static float rotate_rate_integral_erpm = 0.0f;
+static float rotate_rate_cmd_erpm = 0.0f;
+static uint32_t rotate_rate_last_tick_ms = 0u;
 static uint32_t chassis_task_deadline_ms = 0u;
 static int8_t move_dir = 1;
 static uint8_t move_direct_wheel_mode = 0u;
@@ -99,6 +115,7 @@ typedef enum
     CHASSIS_API_MODE_POLAR_VELOCITY,
     CHASSIS_API_MODE_POLAR_DISTANCE,
     CHASSIS_API_MODE_ROTATE_TASK,
+    CHASSIS_API_MODE_ROTATE_VELOCITY,
     CHASSIS_API_MODE_PATH_TRACKING,
 } ChassisApiMode_e;
 
@@ -118,6 +135,13 @@ static void Chassis_SetTaskTimeout(uint32_t timeout_ms);
 static uint8_t Chassis_TaskTimedOut(void);
 static void Chassis_ResetRotateControl(void);
 static float Chassis_UpdateRotateControl(float angle_error_deg, float gyro_z_dps);
+static float ChassisNormalizeAngleDeg(float angle_deg);
+static float Chassis_GetDirectionalMaxSpeed(float angle_deg);
+static void Chassis_ResetVelocityControl(void);
+static void Chassis_UpdatePolarVelocity(const HWT9053Heading_t *heading);
+static void Chassis_ResetRotateRateControl(void);
+static float Chassis_UpdateRotateRateControl(float gyro_z_dps);
+static uint8_t ChassisContinuousModeIsActive(void);
 static float MoveTaskGetDirectionalMinSpeed(float unit_forward, float unit_lateral);
 
 static void Chassis_SetTaskTimeout(uint32_t timeout_ms)
@@ -181,6 +205,72 @@ static float Chassis_UpdateRotateControl(float angle_error_deg, float gyro_z_dps
     return rotate_cmd_erpm;
 }
 
+static float Chassis_GetDirectionalMaxSpeed(float angle_deg)
+{
+    float lateral_factor = fabsf(sinf(ChassisNormalizeAngleDeg(angle_deg) * DEG_TO_RAD));
+    float limit_mps = MOVE_MAX_SPEED_MPS;
+
+    if (lateral_factor > 1.0e-4f)
+    {
+        float lateral_limit_mps = MOVE_LATERAL_MAX_SPEED_MPS / lateral_factor;
+        if (lateral_limit_mps < limit_mps) limit_mps = lateral_limit_mps;
+    }
+    return limit_mps;
+}
+
+static void Chassis_ResetVelocityControl(void)
+{
+    velocity_cmd_forward_mps = 0.0f;
+    velocity_cmd_right_mps = 0.0f;
+    velocity_last_tick_ms = HAL_GetTick();
+}
+
+static void Chassis_ResetRotateRateControl(void)
+{
+    rotate_rate_target_dps = 0.0f;
+    rotate_rate_integral_erpm = 0.0f;
+    rotate_rate_cmd_erpm = 0.0f;
+    rotate_rate_last_tick_ms = HAL_GetTick();
+}
+
+static float Chassis_UpdateRotateRateControl(float gyro_z_dps)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t elapsed_ms = now - rotate_rate_last_tick_ms;
+    float dt = (elapsed_ms > 0u) ? (float)elapsed_ms * 0.001f : ROTATE_DT_FALLBACK_S;
+    float rate_error;
+    float feedforward_erpm;
+    float target_erpm;
+    float max_step;
+    float step;
+
+    rotate_rate_last_tick_ms = now;
+    if (dt <= 0.0f || dt > 0.05f) dt = ROTATE_DT_FALLBACK_S;
+
+    rate_error = rotate_rate_target_dps - gyro_z_dps;
+    rotate_rate_integral_erpm += ROTATE_RATE_KI_ERPM_DPS_S * rate_error * dt;
+    if (rotate_rate_integral_erpm > ROTATE_RATE_I_MAX_ERPM)
+        rotate_rate_integral_erpm = ROTATE_RATE_I_MAX_ERPM;
+    if (rotate_rate_integral_erpm < -ROTATE_RATE_I_MAX_ERPM)
+        rotate_rate_integral_erpm = -ROTATE_RATE_I_MAX_ERPM;
+
+    feedforward_erpm = (rotate_rate_target_dps > 0.0f) ?
+                       ROTATE_RATE_STATIC_ERPM : -ROTATE_RATE_STATIC_ERPM;
+    feedforward_erpm += ROTATE_RATE_KF_ERPM_DPS * rotate_rate_target_dps;
+    target_erpm = feedforward_erpm +
+                  ROTATE_RATE_KP_ERPM_DPS * rate_error +
+                  rotate_rate_integral_erpm;
+    if (target_erpm > ROTATE_CONTROL_MAX_ERPM) target_erpm = ROTATE_CONTROL_MAX_ERPM;
+    if (target_erpm < -ROTATE_CONTROL_MAX_ERPM) target_erpm = -ROTATE_CONTROL_MAX_ERPM;
+
+    max_step = ROTATE_MAX_ACCEL_ERPM_S * dt;
+    step = target_erpm - rotate_rate_cmd_erpm;
+    if (step > max_step) step = max_step;
+    if (step < -max_step) step = -max_step;
+    rotate_rate_cmd_erpm += step;
+    return rotate_rate_cmd_erpm;
+}
+
 static uint8_t ChassisGetHeading(HWT9053Heading_t *heading)
 {
     return HWT9053CAN_GetHeading(heading);
@@ -193,6 +283,12 @@ static uint8_t ChassisClosedLoopFeedbackReady(void)
             g_odom.pose.valid) ? 1u : 0u;
 }
 
+static uint8_t ChassisVelocityFeedbackReady(void)
+{
+    return (HWT9053CAN_IsOnline() &&
+            VESCMotorAllFeedbackOnline()) ? 1u : 0u;
+}
+
 static float ChassisNormalizeAngleDeg(float angle_deg)
 {
     while (angle_deg >= 360.0f) angle_deg -= 360.0f;
@@ -203,6 +299,12 @@ static float ChassisNormalizeAngleDeg(float angle_deg)
 static uint8_t ChassisApiOverrideIsActive(void)
 {
     return (chassis_api_mode != CHASSIS_API_MODE_NONE) ? 1u : 0u;
+}
+
+static uint8_t ChassisContinuousModeIsActive(void)
+{
+    return (chassis_api_mode == CHASSIS_API_MODE_POLAR_VELOCITY ||
+            chassis_api_mode == CHASSIS_API_MODE_ROTATE_VELOCITY) ? 1u : 0u;
 }
 
 static uint8_t ChassisSerialControlIsAllowed(void)
@@ -220,6 +322,9 @@ void ChassisClearApiCommand(void)
     chassis_api_mode = CHASSIS_API_MODE_NONE;
     chassis_api_heading_deg = 0.0f;
     chassis_api_speed_mps = 0.0f;
+    velocity_hold_yaw_deg = 0.0f;
+    Chassis_ResetVelocityControl();
+    Chassis_ResetRotateRateControl();
     move_direct_wheel_mode = 0u;
 
     if (nx16_ctrl.InTask == 0u)
@@ -248,6 +353,8 @@ void ChassisStopCommand(void)
 ChassisApiResult_e ChassisMoveByAngleAndSpeed(float angle_deg, float speed_mps)
 {
     HWT9053Heading_t heading;
+    float speed_limit_mps;
+    uint8_t continuing_velocity_mode;
 
     if (!ChassisSerialControlIsAllowed())
     {
@@ -259,14 +366,21 @@ ChassisApiResult_e ChassisMoveByAngleAndSpeed(float angle_deg, float speed_mps)
         return CHASSIS_API_BAD_PARAM;
     }
 
-    if (fabsf(speed_mps) > MOVE_MAX_SPEED_MPS)
-    {
-        return CHASSIS_API_BAD_PARAM;
-    }
-
     if (nx16_ctrl.InTask != 0u)
     {
         return CHASSIS_API_BUSY;
+    }
+
+    if (speed_mps < 0.0f)
+    {
+        angle_deg += 180.0f;
+        speed_mps = -speed_mps;
+    }
+    angle_deg = ChassisNormalizeAngleDeg(angle_deg);
+    speed_limit_mps = Chassis_GetDirectionalMaxSpeed(angle_deg);
+    if (speed_mps > speed_limit_mps)
+    {
+        return CHASSIS_API_BAD_PARAM;
     }
 
     if (fabsf(speed_mps) < 1.0e-4f)
@@ -276,17 +390,30 @@ ChassisApiResult_e ChassisMoveByAngleAndSpeed(float angle_deg, float speed_mps)
         return CHASSIS_API_OK;
     }
 
-    chassis_api_heading_deg = ChassisNormalizeAngleDeg(angle_deg);
+    if (!ChassisVelocityFeedbackReady() || !ChassisGetHeading(&heading))
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    continuing_velocity_mode =
+        (chassis_api_mode == CHASSIS_API_MODE_POLAR_VELOCITY) ? 1u : 0u;
+    if (!continuing_velocity_mode)
+    {
+        ChassisClearApiCommand();
+        Chassis_ResetVelocityControl();
+        velocity_hold_yaw_deg = heading.yaw_total_deg;
+    }
+
+    chassis_api_heading_deg = angle_deg;
     chassis_api_speed_mps = speed_mps;
     chassis_api_mode = CHASSIS_API_MODE_POLAR_VELOCITY;
+    move_direct_wheel_mode = 1u;
 
     nx16_ctrl.InTask = 0u;
     nx16_ctrl.RxFlag = 0u;
     nx16_ctrl.Status = STATUS_EXECUTING;
-    if (ChassisGetHeading(&heading))
-    {
-        rc_ctrl.target_angle_class = heading.yaw_total_deg;
-    }
+    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+    rc_ctrl.target_angle_class = velocity_hold_yaw_deg;
     return CHASSIS_API_OK;
 }
 
@@ -373,6 +500,110 @@ ChassisApiResult_e ChassisRotateInPlace(ChassisRotateDir_e dir, float angle_deg)
     rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
     rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class + signed_angle_deg;
     return CHASSIS_API_OK;
+}
+
+ChassisApiResult_e ChassisRotateAtSpeed(ChassisRotateDir_e dir, float angular_speed_dps)
+{
+    HWT9053Heading_t heading;
+
+    if (!ChassisSerialControlIsAllowed())
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+    if (angular_speed_dps != angular_speed_dps || angular_speed_dps < 0.0f ||
+        angular_speed_dps > ROTATE_RATE_MAX_DPS)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+    if (nx16_ctrl.InTask != 0u)
+    {
+        return CHASSIS_API_BUSY;
+    }
+    if (angular_speed_dps < 1.0e-4f)
+    {
+        ChassisClearApiCommand();
+        nx16_ctrl.Status = STATUS_IDLE;
+        return CHASSIS_API_OK;
+    }
+    if (angular_speed_dps < ROTATE_RATE_MIN_DPS)
+    {
+        return CHASSIS_API_BAD_PARAM;
+    }
+    if (!ChassisVelocityFeedbackReady() || !ChassisGetHeading(&heading))
+    {
+        return CHASSIS_API_NOT_READY;
+    }
+
+    if (chassis_api_mode != CHASSIS_API_MODE_ROTATE_VELOCITY)
+    {
+        ChassisClearApiCommand();
+        Chassis_ResetRotateRateControl();
+    }
+    /* HWT9053 当前实车约定：物理左转 gyro_z 为负，物理右转为正。 */
+    rotate_rate_target_dps = (dir == CHASSIS_ROTATE_LEFT) ?
+                             -angular_speed_dps : angular_speed_dps;
+    chassis_api_mode = CHASSIS_API_MODE_ROTATE_VELOCITY;
+    move_direct_wheel_mode = 1u;
+    nx16_ctrl.InTask = 0u;
+    nx16_ctrl.RxFlag = 0u;
+    nx16_ctrl.Status = STATUS_EXECUTING;
+    rc_ctrl.chassis_k = 1.0f;
+    rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+    rc_ctrl.target_angle_class = heading.yaw_total_deg;
+    return CHASSIS_API_OK;
+}
+
+static void Chassis_UpdatePolarVelocity(const HWT9053Heading_t *heading)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t elapsed_ms = now - velocity_last_tick_ms;
+    float dt = (elapsed_ms > 0u) ? (float)elapsed_ms * 0.001f : ROTATE_DT_FALLBACK_S;
+    float heading_rad = chassis_api_heading_deg * DEG_TO_RAD;
+    float target_forward_mps = cosf(heading_rad) * chassis_api_speed_mps;
+    float target_right_mps = -sinf(heading_rad) * chassis_api_speed_mps;
+    float delta_forward_mps = target_forward_mps - velocity_cmd_forward_mps;
+    float delta_right_mps = target_right_mps - velocity_cmd_right_mps;
+    float delta_speed_mps;
+    float command_speed_mps;
+    float target_speed_mps;
+    float max_step_mps;
+    float yaw_error_deg;
+    float yaw_cmd_erpm;
+
+    velocity_last_tick_ms = now;
+    if (dt <= 0.0f || dt > 0.05f) dt = ROTATE_DT_FALLBACK_S;
+
+    delta_speed_mps = sqrtf(delta_forward_mps * delta_forward_mps +
+                            delta_right_mps * delta_right_mps);
+    command_speed_mps = sqrtf(velocity_cmd_forward_mps * velocity_cmd_forward_mps +
+                              velocity_cmd_right_mps * velocity_cmd_right_mps);
+    target_speed_mps = sqrtf(target_forward_mps * target_forward_mps +
+                             target_right_mps * target_right_mps);
+    max_step_mps = ((target_speed_mps < command_speed_mps) ?
+                    MOVE_MAX_DECEL_MPS2 : MOVE_MAX_ACCEL_MPS2) * dt;
+    if (delta_speed_mps > max_step_mps && delta_speed_mps > 1.0e-6f)
+    {
+        float scale = max_step_mps / delta_speed_mps;
+        delta_forward_mps *= scale;
+        delta_right_mps *= scale;
+    }
+    velocity_cmd_forward_mps += delta_forward_mps;
+    velocity_cmd_right_mps += delta_right_mps;
+
+    rc_ctrl.feedback_angle_class = heading->yaw_total_deg;
+    rc_ctrl.target_angle_class = velocity_hold_yaw_deg;
+    yaw_error_deg = velocity_hold_yaw_deg - heading->yaw_total_deg;
+    yaw_cmd_erpm = yaw_error_deg * MOVE_HEADING_KP_ERPM_DEG -
+                   heading->gyro_z_dps * MOVE_HEADING_KD_ERPM_DPS;
+    if (yaw_cmd_erpm > MOVE_HEADING_MAX_ERPM) yaw_cmd_erpm = MOVE_HEADING_MAX_ERPM;
+    if (yaw_cmd_erpm < -MOVE_HEADING_MAX_ERPM) yaw_cmd_erpm = -MOVE_HEADING_MAX_ERPM;
+
+    rc_ctrl.chassis_vx = velocity_cmd_forward_mps * 1000.0f;
+    rc_ctrl.chassis_vy = velocity_cmd_right_mps * 1000.0f;
+    rc_ctrl.chassis_wz = yaw_cmd_erpm;
+    Chassis_SetMoveWheelSpeed(velocity_cmd_forward_mps,
+                              velocity_cmd_right_mps,
+                              yaw_cmd_erpm);
 }
 
 void ChassisInit()
@@ -713,6 +944,18 @@ static void OmniCalculate()
         return;
     }
 
+    if (ChassisContinuousModeIsActive())
+    {
+        if (!Nx16V2LinkIsAlive(VELOCITY_LINK_TIMEOUT_MS) ||
+            !ChassisVelocityFeedbackReady() ||
+            !ChassisGetHeading(&heading))
+        {
+            ChassisClearApiCommand();
+            FinishTask(STATUS_CMD_FAILED);
+            return;
+        }
+    }
+
     if (nx16_ctrl.InTask == 0 && fabsf(rc_ctrl.chassis_wz) < CHASSIS_WZ_DEADBAND)
     {
         rc_ctrl.chassis_wz = 0.0f;
@@ -720,19 +963,30 @@ static void OmniCalculate()
 
     if (chassis_api_mode == CHASSIS_API_MODE_POLAR_VELOCITY && nx16_ctrl.InTask == 0)
     {
-        float heading_rad = chassis_api_heading_deg * DEG_TO_RAD;
-        float forward_mps = cosf(heading_rad) * chassis_api_speed_mps;
-        float right_mps = -sinf(heading_rad) * chassis_api_speed_mps;
-
-        rc_ctrl.chassis_vx = forward_mps * 1000.0f;
-        rc_ctrl.chassis_vy = right_mps * 1000.0f;
-        rc_ctrl.chassis_wz = 0.0f;
-        rc_ctrl.target_angle_class = rc_ctrl.feedback_angle_class;
+        Chassis_UpdatePolarVelocity(&heading);
         move_direct_wheel_mode = 1u;
-        Chassis_SetMoveWheelSpeed(forward_mps, right_mps, 0.0f);
         g_dbg.cmd_vx = rc_ctrl.chassis_vx / 1000.0f;
         g_dbg.cmd_vy = rc_ctrl.chassis_vy / 1000.0f;
         g_dbg.cmd_wz = rc_ctrl.chassis_wz;
+        g_dbg.lf_ref = rc_ctrl.vt_lf;
+        g_dbg.rf_ref = rc_ctrl.vt_rf;
+        g_dbg.lb_ref = rc_ctrl.vt_lb;
+        g_dbg.rb_ref = rc_ctrl.vt_rb;
+        return;
+    }
+
+    if (chassis_api_mode == CHASSIS_API_MODE_ROTATE_VELOCITY && nx16_ctrl.InTask == 0)
+    {
+        rc_ctrl.feedback_angle_class = heading.yaw_total_deg;
+        rc_ctrl.target_angle_class = heading.yaw_total_deg;
+        rc_ctrl.chassis_vx = 0.0f;
+        rc_ctrl.chassis_vy = 0.0f;
+        rc_ctrl.chassis_wz = Chassis_UpdateRotateRateControl(heading.gyro_z_dps);
+        move_direct_wheel_mode = 1u;
+        Chassis_SetMoveWheelSpeed(0.0f, 0.0f, rc_ctrl.chassis_wz);
+        g_dbg.cmd_vx = 0.0f;
+        g_dbg.cmd_vy = 0.0f;
+        g_dbg.cmd_wz = rotate_rate_target_dps;
         g_dbg.lf_ref = rc_ctrl.vt_lf;
         g_dbg.rf_ref = rc_ctrl.vt_rf;
         g_dbg.lb_ref = rc_ctrl.vt_lb;
@@ -1217,6 +1471,10 @@ static void Chassis_UpdateMoveTask(void)
 void TaskInit(void)
 {
     memset(&nx16_ctrl, 0, sizeof(nx16_ctrl));
+    chassis_api_mode = CHASSIS_API_MODE_NONE;
+    chassis_api_heading_deg = 0.0f;
+    chassis_api_speed_mps = 0.0f;
+    velocity_hold_yaw_deg = 0.0f;
     rc_ctrl.chassis_vx = 0;
     rc_ctrl.chassis_vy = 0; 
     rc_ctrl.chassis_wz = 0; 
@@ -1235,6 +1493,8 @@ void TaskInit(void)
     move_slip_hold_count = 0u;
     chassis_task_deadline_ms = 0u;
     Chassis_ResetRotateControl();
+    Chassis_ResetVelocityControl();
+    Chassis_ResetRotateRateControl();
     target_distance = 0.0f;
     target_forward_distance = 0.0f;
     target_lateral_distance = 0.0f;
@@ -1293,7 +1553,9 @@ void FinishTask(uint8_t status)
     nx16_ctrl.RxFlag = 0; 
 
     move_direct_wheel_mode = 0u;
-    if (chassis_api_mode == CHASSIS_API_MODE_ROTATE_TASK ||
+    if (chassis_api_mode == CHASSIS_API_MODE_POLAR_VELOCITY ||
+        chassis_api_mode == CHASSIS_API_MODE_ROTATE_TASK ||
+        chassis_api_mode == CHASSIS_API_MODE_ROTATE_VELOCITY ||
         chassis_api_mode == CHASSIS_API_MODE_POLAR_DISTANCE ||
         chassis_api_mode == CHASSIS_API_MODE_PATH_TRACKING)
     {

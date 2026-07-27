@@ -53,6 +53,8 @@ static uint8_t command_id = 0;
 static uint8_t agent_v2_last_cmd = 0u;
 static uint8_t agent_v2_last_seq = 0u;
 static uint8_t agent_v2_last_valid = 0u;
+static volatile uint32_t agent_v2_last_alive_tick = 0u;
+static volatile uint8_t agent_v2_alive_valid = 0u;
 
 typedef struct
 {
@@ -526,8 +528,17 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
         cmd_id != CMD2_ROTATE_IN_PLACE &&
         cmd_id != CMD2_STOP &&
         cmd_id != CMD2_INIT &&
-        cmd_id != CMD2_HEARTBEAT)
+        cmd_id != CMD2_HEARTBEAT &&
+        cmd_id != CMD2_ROTATE_SPEED)
     {
+        return;
+    }
+
+    agent_v2_last_alive_tick = HAL_GetTick();
+    agent_v2_alive_valid = 1u;
+    if (cmd_id == CMD2_HEARTBEAT)
+    {
+        nx16_ctrl.CommandID_test_zxj = CMD2_HEARTBEAT;
         return;
     }
 
@@ -571,7 +582,22 @@ void Nx16ResetProtocolState(void)
     agent_v2_last_cmd = 0u;
     agent_v2_last_seq = 0u;
     agent_v2_last_valid = 0u;
+    agent_v2_last_alive_tick = 0u;
+    agent_v2_alive_valid = 0u;
     NX16_CRITICAL_EXIT();
+}
+
+uint8_t Nx16V2LinkIsAlive(uint32_t timeout_ms)
+{
+    uint32_t last_tick;
+    uint8_t valid;
+
+    NX16_CRITICAL_ENTER();
+    last_tick = agent_v2_last_alive_tick;
+    valid = agent_v2_alive_valid;
+    NX16_CRITICAL_EXIT();
+    if (!valid) return 0u;
+    return ((uint32_t)(HAL_GetTick() - last_tick) <= timeout_ms) ? 1u : 0u;
 }
 
 void Nx16ProcessPendingCommand(void)
@@ -618,6 +644,15 @@ void Nx16ProcessPendingCommand(void)
         break;
     }
 
+    case CMD2_ROTATE_SPEED:
+    {
+        ChassisRotateDir_e dir = (pending.param1 >= 0.5f) ?
+                                 CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
+        legacy_cmd = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
+        api_result = ChassisRotateAtSpeed(dir, pending.param2);
+        break;
+    }
+
     case CMD2_STOP:
         ChassisStopCommand();
         Nx16ResetProtocolState();
@@ -633,10 +668,6 @@ void Nx16ProcessPendingCommand(void)
         nx16_ctrl.LastCommandID = legacy_cmd;
         nx16_ctrl.Status = STATUS_IDLE;
         nx16_ctrl.RxFlag = 0u;
-        return;
-
-    case CMD2_HEARTBEAT:
-        nx16_ctrl.CommandID_test_zxj = CMD2_HEARTBEAT;
         return;
 
     default:

@@ -29,6 +29,9 @@ V2 串口协议底盘控制测试脚本
   # 仅测试定角度速度控制（持续前进）
   python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1 --speed-duration 3
 
+  # 仅测试定角速度旋转（左转 20 deg/s，持续 5 秒）
+  python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-speed-dps 20 --rotate-speed-duration 5
+
   # 仅测试定距离位移
   python keil\test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
 
@@ -41,10 +44,12 @@ V2 串口协议底盘控制测试脚本
 参数说明:
   --port            串口号，Windows 如 COM12，Linux 如 /dev/ttyUSB0
   --baudrate        波特率，默认 115200
-  --only            只运行指定测试: all | speed | distance | rotate | deadzone
+  --only            只运行指定测试: all | speed | rotate-speed | distance | rotate | deadzone
   --speed-angle     速度测试方向角（度），0=前 90=左 180=后 270=右
   --speed-mps       速度测试目标速度（m/s），默认 0.05
   --speed-duration  速度测试持续时间（秒），默认 1.0
+  --rotate-speed-dps 定角速度旋转目标（deg/s），默认 20
+  --rotate-speed-duration 定角速度旋转持续时间（秒），默认 5
   --distance-angle  定距测试方向角（度）
   --distance-m      定距测试距离（米），默认 0.2
   --rotate-left     旋转测试左转（默认）
@@ -86,13 +91,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baudrate", type=int, default=115200, help="波特率，默认 115200")
     parser.add_argument(
         "--only",
-        choices=("all", "speed", "distance", "rotate", "deadzone"),
+        choices=("all", "speed", "rotate-speed", "distance", "rotate", "deadzone"),
         default="all",
-        help="只运行指定测试: all | speed | distance | rotate | deadzone",
+        help="只运行指定测试: all | speed | rotate-speed | distance | rotate | deadzone",
     )
     parser.add_argument("--speed-angle", type=float, default=0.0, help="速度测试方向角（度）")
     parser.add_argument("--speed-mps", type=float, default=0.05, help="速度测试目标速度 m/s")
     parser.add_argument("--speed-duration", type=float, default=1.0, help="速度测试持续时间 s")
+    parser.add_argument("--rotate-speed-dps", type=float, default=20.0, help="定角速度旋转目标 deg/s")
+    parser.add_argument("--rotate-speed-duration", type=float, default=5.0, help="定角速度旋转持续时间 s")
     parser.add_argument("--distance-angle", type=float, default=0.0, help="定距测试方向角（度）")
     parser.add_argument("--distance-m", type=float, default=0.20, help="定距测试距离 m")
     parser.add_argument("--distance-timeout", type=float, default=8.0, help="定距测试超时 s")
@@ -568,6 +575,22 @@ def main() -> int:
             car.stop_v2()
             time.sleep(args.settle)
             print_state(car, "速度测试后", verbose)
+
+        # ---- 定角速度旋转测试 ----
+        if args.only == "rotate-speed":
+            direction_text = "左转" if rotate_left else "右转"
+            print(f"\n── 定角速度旋转: {direction_text} {args.rotate_speed_dps:.1f} deg/s  "
+                  f"持续 {args.rotate_speed_duration:.1f}s ──")
+            _require_ok(
+                car.rotate_with_speed(rotate_left, args.rotate_speed_dps),
+                "定角速度命令下发",
+            )
+            time.sleep(0.20)
+            print_state(car, "旋转中", verbose)
+            time.sleep(max(0.0, args.rotate_speed_duration - 0.20))
+            car.stop_v2()
+            time.sleep(args.settle)
+            print_state(car, "定角速度测试后", verbose)
 
         # ---- 定距离位移 ----
         if args.only in ("all", "distance"):
