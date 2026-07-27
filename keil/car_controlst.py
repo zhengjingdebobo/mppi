@@ -782,13 +782,15 @@ class CarController:
             return False
 
         legacy_cmd = self.CMD_MOVE_FORWARD if distance_m > 0 else self.CMD_MOVE_BACKWARD
-        start_odom, _ = self.get_odom_state()
         self._prepare_blocking_command(legacy_cmd)
         if not self._send_command_v2(self.CMD2_MOVE_POLAR_DISTANCE, angle_deg, distance_m):
             self._clear_pending_command()
             return False
 
-        success = self._wait_for_move_feedback(start_odom, distance_m, timeout)
+        # The MCU owns the position, lateral-error, yaw, low-speed and
+        # stable-hold completion checks.  Waiting on its terminal status
+        # avoids declaring success early from a loose PC-side radius check.
+        success = self._wait_blocking_command(timeout)
         if not success:
             self.stop_v2()
             return False

@@ -1,40 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# CSV 日志控制说明：
+# 1. 默认不生成 CSV 文件，正常运行时无需添加任何日志参数。
+# 2. 如需生成 CSV，请添加 --save-log。
+# 3. 可用 --log-file 指定保存路径，例如：
+#    python keil\test_v2_protocol.py --port COM12 --only rotate --save-log --log-file rotate.csv
+# 4. --log-rate 可设置 CSV 采样频率（Hz），默认 50 Hz。
 """
 V2 串口协议底盘控制测试脚本
 =============================
 
 用法:
   # 默认完整测试（速度→定距→旋转）
-  python test_v2_protocol.py --port COM12
+  python keil\test_v2_protocol.py --port COM12
 
   # 仅测试旋转（调 PID 最常用）
-  python test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
+  python keil\test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
 
   # 仅测试旋转：右转 90 度
-  python test_v2_protocol.py --port COM12 --only rotate --rotate-right --rotate-angle 90
+  python keil\test_v2_protocol.py --port COM12 --only rotate --rotate-right --rotate-angle 90
 
   # 电机死区测试：100~800 RPM，步进 50，自动找到起转点
-  python test_v2_protocol.py --port COM12 --only deadzone
+  python keil\test_v2_protocol.py --port COM12 --only deadzone
 
   # 电机死区测试：自定义范围和步进
-  python test_v2_protocol.py --port COM12 --only deadzone --rpm-start 50 --rpm-stop 600 --rpm-step 25
+  python keil\test_v2_protocol.py --port COM12 --only deadzone --rpm-start 50 --rpm-stop 600 --rpm-step 25
 
   # 仅测试定角度速度控制（持续前进）
-  python test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1 --speed-duration 3
+  python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1 --speed-duration 3
 
   # 仅测试定距离位移
-  python test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
+  python keil\test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
 
   # 自定义串口和波特率
-  python test_v2_protocol.py --port /dev/ttyUSB0 --baudrate 115200 --only rotate --rotate-angle 90
+  python keil\test_v2_protocol.py --port /dev/ttyUSB0 --baudrate 115200 --only rotate --rotate-angle 90
 
   # 详细输出（打印完整调试信息，用于排查问题）
-  python test_v2_protocol.py --port COM12 --verbose
+  python keil\test_v2_protocol.py --port COM12 --verbose
 
 参数说明:
   --port            串口号，Windows 如 COM12，Linux 如 /dev/ttyUSB0
-  --baudrate        波特率，默认 9600
+  --baudrate        波特率，默认 115200
   --only            只运行指定测试: all | speed | distance | rotate | deadzone
   --speed-angle     速度测试方向角（度），0=前 90=左 180=后 270=右
   --speed-mps       速度测试目标速度（m/s），默认 0.05
@@ -56,6 +62,7 @@ V2 串口协议底盘控制测试脚本
 import argparse
 import csv
 from datetime import datetime
+import math
 from pathlib import Path
 import sys
 import threading
@@ -70,9 +77,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
-  python test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1
-  python test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
+  python keil\test_v2_protocol.py --port COM12 --only rotate --rotate-angle 45
+  python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 0 --speed-mps 0.1
+  python keil\test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
         """,
     )
     parser.add_argument("--port", default="COM12", help="串口号，默认 COM12")
@@ -98,7 +105,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rpm-step", type=int, default=50, help="死区测试步进 RPM")
     parser.add_argument("--rpm-duration", type=float, default=0.4, help="每档 RPM 持续时间 s")
     parser.add_argument("--settle", type=float, default=0.8, help="步骤间等待时间 s")
-    parser.add_argument("--log-file", default="", help="调试 CSV 路径；旋转测试默认自动生成")
+    parser.add_argument("--log-file",default="",help="调试 CSV 路径，需要配合 --save-log")
+    parser.add_argument("--save-log",action="store_true",help="保存调试 CSV 日志")
     parser.add_argument("--log-rate", type=float, default=50.0, help="调试 CSV 采样频率 Hz")
     parser.add_argument("--verbose", action="store_true", help="详细输出所有调试字段")
     return parser
@@ -211,8 +219,10 @@ def run_rotate_with_log(car: CarController, args, rotate_left: bool) -> bool:
     target_yaw = initial_yaw + signed_angle
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     direction = "left" if rotate_left else "right"
-    log_path = Path(args.log_file or f"rotate_debug_{direction}_{args.rotate_angle:g}deg_{stamp}.csv")
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = None
+    if args.save_log:
+        log_path = Path(args.log_file or f"rotate_debug_{direction}_{args.rotate_angle:g}deg_{stamp}.csv")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
     period = 1.0 / max(1.0, min(args.log_rate, 200.0))
     stop_event = threading.Event()
     rows = []
@@ -251,21 +261,188 @@ def run_rotate_with_log(car: CarController, args, rotate_left: bool) -> bool:
 
     if not rows:
         rows.append(_snapshot_rotate(car, started_at, target_yaw))
-    with log_path.open("w", newline="", encoding="utf-8-sig") as fp:
-        writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
+    if args.save_log:
+        with log_path.open("w", newline="", encoding="utf-8-sig") as fp:
+            writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  CSV 日志: {log_path.resolve()}")
 
     final = rows[-1]
     peak_gyro = max(abs(r["gyro_z_dps"]) for r in rows)
     peak_ref = max(abs(r[k]) for r in rows for k in ("lf_ref", "rf_ref", "lb_ref", "rb_ref"))
     yaw_count_delta = rows[-1]["imu_yaw_count"] - rows[0]["imu_yaw_count"]
-    print(f"  调试日志: {log_path.resolve()}")
     print(
         f"  汇总: target={target_yaw:.2f}° final={final['yaw_total_deg']:.2f}° "
         f"final_error={final['angle_error_deg']:+.2f}° "
         f"peak|gyro|={peak_gyro:.2f}°/s peak|wheel_ref|={peak_ref:.0f} ERPM "
         f"yaw_count_delta={yaw_count_delta}"
+    )
+    return ok
+
+
+# ---------------------------------------------------------------------------
+# 定距离闭环测试
+# ---------------------------------------------------------------------------
+
+def _snapshot_distance(
+    car: CarController,
+    started_at: float,
+    start_x: float,
+    start_y: float,
+    start_yaw_deg: float,
+    target_forward_m: float,
+    target_lateral_m: float,
+) -> dict:
+    """原子读取定距离任务快照，并投影到任务启动时的车体坐标系。"""
+    with car.lock:
+        imu = dict(car.last_imu)
+        wheels = tuple(float(v) for v in car.debug_motro_vel)
+        cmd = tuple(float(v) for v in car.debug_cmd_vel)
+        in_task = float(car.debug_cmd_vel_true[2])
+        status = int(car.current_status)
+        last_cmd = int(car.last_feedback_cmd_id)
+        vesc = dict(car.vesc_feedback)
+        x_m = float(car.odom_x)
+        y_m = float(car.odom_y)
+        yaw_deg = float(car.odom_yaw_deg)
+
+    # 状态接收层会把负角映射到 [0, 360)，恢复为最接近启动航向的
+    # 连续等价角，避免轻微左偏被汇总成接近 +360°。
+    yaw_deg += 360.0 * round((start_yaw_deg - yaw_deg) / 360.0)
+    yaw0 = math.radians(start_yaw_deg)
+    dx = x_m - start_x
+    dy = y_m - start_y
+    traveled_forward = -dx * math.sin(yaw0) + dy * math.cos(yaw0)
+    traveled_lateral = dx * math.cos(yaw0) + dy * math.sin(yaw0)
+    remain_forward = target_forward_m - traveled_forward
+    remain_lateral = target_lateral_m - traveled_lateral
+
+    return {
+        "pc_elapsed_s": time.monotonic() - started_at,
+        "stm32_us": int(imu.get("stm32_us", 0)),
+        "status": status,
+        "status_name": _status_name(status),
+        "last_cmd_id": last_cmd,
+        "in_task": in_task,
+        "x_m": x_m,
+        "y_m": y_m,
+        "yaw_total_deg": yaw_deg,
+        "start_yaw_deg": start_yaw_deg,
+        "target_forward_m": target_forward_m,
+        "target_lateral_m": target_lateral_m,
+        "traveled_forward_m": traveled_forward,
+        "traveled_lateral_m": traveled_lateral,
+        "remain_forward_m": remain_forward,
+        "remain_lateral_m": remain_lateral,
+        "remain_radius_m": math.hypot(remain_forward, remain_lateral),
+        "gyro_z_dps": float(imu.get("gyro_z_dps", 0.0)),
+        "acc_x_g": float(imu.get("acc_x_g", 0.0)),
+        "acc_y_g": float(imu.get("acc_y_g", 0.0)),
+        "cmd_forward_mps": cmd[0],
+        "cmd_lateral_mps": cmd[1],
+        "cmd_wz_erpm": cmd[2],
+        "lf_ref": wheels[0], "lf_fdb": wheels[1],
+        "rf_ref": wheels[2], "rf_fdb": wheels[3],
+        "lb_ref": wheels[4], "lb_fdb": wheels[5],
+        "rb_ref": wheels[6], "rb_fdb": wheels[7],
+        "lf_online": int(vesc.get("lf_online", 0)),
+        "rf_online": int(vesc.get("rf_online", 0)),
+        "lb_online": int(vesc.get("lb_online", 0)),
+        "rb_online": int(vesc.get("rb_online", 0)),
+        "imu_online": int(imu.get("online", 0)),
+    }
+
+
+def run_distance_with_log(car: CarController, args) -> bool:
+    """执行阻塞式定距离命令，同时记录位置、速度与四轮闭环时间序列。"""
+    start_odom, start_yaw = car.get_odom_state()
+    angle_rad = math.radians(args.distance_angle % 360.0)
+    target_forward = math.cos(angle_rad) * args.distance_m
+    target_lateral = -math.sin(angle_rad) * args.distance_m
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = None
+
+    if args.save_log:
+        log_path = Path(
+            args.log_file
+            or f"distance_debug_{args.distance_angle:g}deg_{args.distance_m:g}m_{stamp}.csv"
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    period = 1.0 / max(1.0, min(args.log_rate, 200.0))
+    stop_event = threading.Event()
+    rows = []
+    started_at = time.monotonic()
+
+    def sample_loop() -> None:
+        next_sample = time.monotonic()
+        next_print = next_sample
+        while not stop_event.is_set():
+            row = _snapshot_distance(
+                car,
+                started_at,
+                float(start_odom[0]),
+                float(start_odom[1]),
+                start_yaw,
+                target_forward,
+                target_lateral,
+            )
+            rows.append(row)
+            now = time.monotonic()
+            if now >= next_print:
+                print(
+                    f"  t={row['pc_elapsed_s']:6.2f}s "
+                    f"fwd={row['traveled_forward_m']:+.3f}m "
+                    f"lat={row['traveled_lateral_m']:+.3f}m "
+                    f"remain={row['remain_radius_m']:.3f}m "
+                    f"yaw={row['yaw_total_deg']:.2f}° "
+                    f"cmd=({row['cmd_forward_mps']:+.3f},{row['cmd_lateral_mps']:+.3f})m/s "
+                    f"state={row['status_name']}/{row['in_task']:.0f}"
+                )
+                next_print = now + 0.10
+            next_sample += period
+            stop_event.wait(max(0.0, next_sample - time.monotonic()))
+
+    sampler = threading.Thread(target=sample_loop, name="distance-debug-sampler", daemon=True)
+    sampler.start()
+    try:
+        ok = car.move_with_angle_distance(
+            args.distance_angle,
+            args.distance_m,
+            timeout=args.distance_timeout,
+        )
+        time.sleep(0.35)
+    finally:
+        stop_event.set()
+        sampler.join(timeout=1.0)
+
+    if not rows:
+        rows.append(
+            _snapshot_distance(
+                car,
+                started_at,
+                float(start_odom[0]),
+                float(start_odom[1]),
+                start_yaw,
+                target_forward,
+                target_lateral,
+            )
+        )
+    if args.save_log:
+        with log_path.open("w", newline="", encoding="utf-8-sig") as fp:
+            writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  CSV 日志: {log_path.resolve()}")
+
+    final = rows[-1]
+    peak_ref = max(abs(r[k]) for r in rows for k in ("lf_ref", "rf_ref", "lb_ref", "rb_ref"))
+    print(
+        f"  汇总: forward={final['traveled_forward_m']:+.3f}m "
+        f"lateral={final['traveled_lateral_m']:+.3f}m "
+        f"remain={final['remain_radius_m']:.3f}m "
+        f"yaw_delta={final['yaw_total_deg'] - start_yaw:+.2f}° "
+        f"peak|wheel_ref|={peak_ref:.0f} ERPM"
     )
     return ok
 
@@ -396,9 +573,7 @@ def main() -> int:
         if args.only in ("all", "distance"):
             print(f"\n── 定距离位移: angle={args.distance_angle:.1f}°  "
                   f"distance={args.distance_m:.3f} m ──")
-            ok = car.move_with_angle_distance(
-                args.distance_angle, args.distance_m, timeout=args.distance_timeout,
-            )
+            ok = run_distance_with_log(car, args)
             _require_ok(ok, "定距离位移")
             time.sleep(args.settle)
             print_state(car, "定距后", verbose)

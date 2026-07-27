@@ -13,6 +13,7 @@ Release/
 硬件/
 .vscode/
 .agents/
+.claude/
 
 # Keil
 Objects/

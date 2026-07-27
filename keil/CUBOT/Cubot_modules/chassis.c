@@ -18,12 +18,10 @@
 #endif
 
 #define MOVE_MAX_SPEED_MPS         0.22f
-#define MOVE_MIN_SPEED_MPS         0.05f
 #define MOVE_MAX_ACCEL_MPS2        0.35f
 #define MOVE_MAX_DECEL_MPS2        0.45f
-#define MOVE_LATERAL_KP_MPS        1.60f
-#define MOVE_LATERAL_KD_MPS        0.18f
 #define MOVE_LATERAL_MAX_SPEED_MPS 0.08f
+#define MOVE_DEADZONE_ERPM         900.0f
 #define MOVE_FINISH_THRESH_M       0.015f
 #define MOVE_FINISH_LATERAL_M      0.025f
 #define MOVE_FINISH_TARGET_RADIUS_M 0.020f
@@ -120,6 +118,7 @@ static void Chassis_SetTaskTimeout(uint32_t timeout_ms);
 static uint8_t Chassis_TaskTimedOut(void);
 static void Chassis_ResetRotateControl(void);
 static float Chassis_UpdateRotateControl(float angle_error_deg, float gyro_z_dps);
+static float MoveTaskGetDirectionalMinSpeed(float unit_forward, float unit_lateral);
 
 static void Chassis_SetTaskTimeout(uint32_t timeout_ms)
 {
@@ -842,6 +841,34 @@ static float MoveTaskClamp(float value, float min_value, float max_value)
     return value;
 }
 
+/*
+ * 将实测轮端静摩擦死区换算成当前运动方向所需的最小车体速度。
+ * X-drive 在不同方向上的轮速组合不同，因此不能用一个固定 m/s 阈值。
+ */
+static float MoveTaskGetDirectionalMinSpeed(float unit_forward, float unit_lateral)
+{
+    float inv_sqrt2 = g_odom.cfg.inv_sqrt2;
+    float max_wheel_factor;
+    float factor;
+
+    if (inv_sqrt2 <= 0.0f) inv_sqrt2 = 0.70710678f;
+
+    max_wheel_factor = fabsf(-unit_lateral - unit_forward);
+    factor = fabsf(unit_lateral - unit_forward);
+    if (factor > max_wheel_factor) max_wheel_factor = factor;
+    factor = fabsf(-unit_lateral + unit_forward);
+    if (factor > max_wheel_factor) max_wheel_factor = factor;
+    factor = fabsf(unit_lateral + unit_forward);
+    if (factor > max_wheel_factor) max_wheel_factor = factor;
+    max_wheel_factor *= inv_sqrt2;
+
+    if (max_wheel_factor <= 1.0e-4f)
+    {
+        return 0.0f;
+    }
+    return MOVE_DEADZONE_ERPM * VESC_WHEEL_MPS_PER_ERPM / max_wheel_factor;
+}
+
 static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float yaw_cmd)
 {
     float speed_mps_per_erpm = VESC_WHEEL_MPS_PER_ERPM;
@@ -958,8 +985,16 @@ static void Chassis_UpdateMoveTask(void)
     float lateral_vel;
     float target_forward_mps;
     float target_lateral_mps;
-    float forward_step;
-    float lateral_step;
+    float target_speed_mps;
+    float direction_speed_limit_mps;
+    float min_speed_mps;
+    float unit_forward;
+    float unit_lateral;
+    float cmd_speed_mps;
+    float delta_forward_mps;
+    float delta_lateral_mps;
+    float delta_speed_mps;
+    float max_vector_step_mps;
     float dist_to_target;
     float abs_lateral;
     float yaw_error_deg;
@@ -1020,7 +1055,8 @@ static void Chassis_UpdateMoveTask(void)
                           g_odom.pose.ay_mps2 * g_odom.pose.ay_mps2);
 
     // 编码器显示在走，但 IMU 速度和加速度都很小，可视为疑似打滑
-    if (fabsf(forward_vel) > MOVE_SLIP_ENC_SPEED_MPS &&
+    if (sqrtf(forward_vel * forward_vel + lateral_vel * lateral_vel) >
+            MOVE_SLIP_ENC_SPEED_MPS &&
         imu_speed_abs < MOVE_SLIP_IMU_SPEED_MPS &&
         world_acc_abs < MOVE_SLIP_ACCEL_MPS2)
     {
@@ -1069,34 +1105,87 @@ static void Chassis_UpdateMoveTask(void)
     }
     else
     {
-        target_forward_mps = sqrtf(2.0f * MOVE_MAX_DECEL_MPS2 * fabsf(remain_forward));
-        target_forward_mps = MoveTaskClamp(target_forward_mps, 0.0f, MOVE_MAX_SPEED_MPS);
-        if (slip_detected && target_forward_mps > MOVE_SLIP_LIMIT_SPEED_MPS)
+        if (dist_to_target <= MOVE_FINISH_TARGET_RADIUS_M)
         {
-            target_forward_mps = MOVE_SLIP_LIMIT_SPEED_MPS;
+            /*
+             * 进入终点窗口后立即撤销平移驱动力，让斜率限制负责减速。
+             * 只有位移、航向和实际速度同时稳定后才会在上方锁存成功。
+             */
+            target_forward_mps = 0.0f;
+            target_lateral_mps = 0.0f;
         }
-        if (fabsf(remain_forward) > MOVE_FINISH_TARGET_RADIUS_M && target_forward_mps < MOVE_MIN_SPEED_MPS)
+        else
         {
-            target_forward_mps = MOVE_MIN_SPEED_MPS;
-        }
-        if (remain_forward < 0.0f)
-        {
-            target_forward_mps = -target_forward_mps;
+            /*
+             * 以剩余位置向量作为唯一运动方向。前向/横向不再分别生成
+             * 两个互不相关的速度，45°等斜向任务因此不会走成折线。
+             */
+            unit_forward = remain_forward / dist_to_target;
+            unit_lateral = remain_lateral / dist_to_target;
+
+            target_speed_mps = sqrtf(2.0f * MOVE_MAX_DECEL_MPS2 * dist_to_target);
+            direction_speed_limit_mps = MOVE_MAX_SPEED_MPS;
+            if (fabsf(unit_lateral) > 1.0e-4f)
+            {
+                float lateral_limited_speed =
+                    MOVE_LATERAL_MAX_SPEED_MPS / fabsf(unit_lateral);
+                if (lateral_limited_speed < direction_speed_limit_mps)
+                {
+                    direction_speed_limit_mps = lateral_limited_speed;
+                }
+            }
+            if (slip_detected &&
+                direction_speed_limit_mps > MOVE_SLIP_LIMIT_SPEED_MPS)
+            {
+                direction_speed_limit_mps = MOVE_SLIP_LIMIT_SPEED_MPS;
+            }
+            target_speed_mps = MoveTaskClamp(target_speed_mps,
+                                             0.0f,
+                                             direction_speed_limit_mps);
+
+            /*
+             * 终点窗口外保证至少有一组主动轮越过实测静摩擦死区；
+             * 进入窗口后上面的零目标会立即撤销补偿，避免持续顶车。
+             */
+            min_speed_mps =
+                MoveTaskGetDirectionalMinSpeed(unit_forward, unit_lateral);
+            if (target_speed_mps < min_speed_mps)
+            {
+                target_speed_mps = min_speed_mps;
+            }
+            if (target_speed_mps > direction_speed_limit_mps)
+            {
+                target_speed_mps = direction_speed_limit_mps;
+            }
+
+            target_forward_mps = unit_forward * target_speed_mps;
+            target_lateral_mps = unit_lateral * target_speed_mps;
         }
 
-        target_lateral_mps = remain_lateral * MOVE_LATERAL_KP_MPS - lateral_vel * MOVE_LATERAL_KD_MPS;
-        target_lateral_mps = MoveTaskClamp(target_lateral_mps,
-                                           -MOVE_LATERAL_MAX_SPEED_MPS,
-                                            MOVE_LATERAL_MAX_SPEED_MPS);
-
-        forward_step = MoveTaskClamp(target_forward_mps - move_cmd_forward_mps,
-                                     -MOVE_MAX_DECEL_MPS2 * feedback_dt,
-                                      MOVE_MAX_ACCEL_MPS2 * feedback_dt);
-        lateral_step = MoveTaskClamp(target_lateral_mps - move_cmd_lateral_mps,
-                                     -MOVE_MAX_ACCEL_MPS2 * feedback_dt,
-                                      MOVE_MAX_ACCEL_MPS2 * feedback_dt);
-        move_cmd_forward_mps += forward_step;
-        move_cmd_lateral_mps += lateral_step;
+        /*
+         * 对二维速度差向量统一限幅，避免两个轴独立斜率限制再次改变
+         * 目标方向。目标模长下降时使用更大的制动斜率。
+         */
+        delta_forward_mps = target_forward_mps - move_cmd_forward_mps;
+        delta_lateral_mps = target_lateral_mps - move_cmd_lateral_mps;
+        delta_speed_mps = sqrtf(delta_forward_mps * delta_forward_mps +
+                                delta_lateral_mps * delta_lateral_mps);
+        cmd_speed_mps = sqrtf(move_cmd_forward_mps * move_cmd_forward_mps +
+                              move_cmd_lateral_mps * move_cmd_lateral_mps);
+        target_speed_mps = sqrtf(target_forward_mps * target_forward_mps +
+                                 target_lateral_mps * target_lateral_mps);
+        max_vector_step_mps =
+            ((target_speed_mps < cmd_speed_mps) ?
+             MOVE_MAX_DECEL_MPS2 : MOVE_MAX_ACCEL_MPS2) * feedback_dt;
+        if (delta_speed_mps > max_vector_step_mps &&
+            delta_speed_mps > 1.0e-6f)
+        {
+            float step_scale = max_vector_step_mps / delta_speed_mps;
+            delta_forward_mps *= step_scale;
+            delta_lateral_mps *= step_scale;
+        }
+        move_cmd_forward_mps += delta_forward_mps;
+        move_cmd_lateral_mps += delta_lateral_mps;
         rc_ctrl.chassis_vx = move_cmd_forward_mps * 1000.0f;
         rc_ctrl.chassis_vy = move_cmd_lateral_mps * 1000.0f;
         Chassis_SetMoveWheelSpeed(move_cmd_forward_mps,
