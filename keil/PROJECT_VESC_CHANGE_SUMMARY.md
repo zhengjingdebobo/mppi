@@ -1,10 +1,271 @@
 # STM32 VESC 底盘工程交接摘要
 
-更新时间：2026-07-27
+更新时间：2026-07-28
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
 
-## 下一次工作直接入口
+## 2026-07-28 当前权威状态（下次从这里继续）
+
+> 本节是当前代码和实车状态的最高优先级说明。若后文历史记录与本节冲突，
+> 一律以本节、当前源码和 `keil/CUBOT/Cubot_Velocity/mind.md` 为准。
+
+### 今日结论
+
+- 旧遥控器、定距离、定角度链路继续保留，没有用新框架替换。
+- 新 `cmd_vel` 底盘速度框架已经建立并接入原 `ChassisTask()`。
+- 不再使用第二个底盘任务；`StartROBOTTASK -> ChassisTask()` 是唯一底盘控制任务。
+- 遥控器在线是串口运动许可条件；遥控器掉线时所有串口运动均被禁止。
+- 遥控器运动输入具有最高优先级，并且会永久取消当前持续速度会话。
+- 遥控器松杆后，被打断的“五秒前进”等旧速度指令不会自动恢复。
+- 任意方向定速平移的实车方向已经验证正确。
+- 定角速度旋转最初左右相反，已将新运动学 yaw 指令符号修正为正号；
+  当前标准约定为左转正、右转负。修改已编译，下一次应先做一次低速复验。
+- 下一步不是继续改方向，而是进行平移速度、角速度和四轮死区的定量标定。
+
+### 今日新增的速度框架
+
+新增目录：
+
+```text
+keil/CUBOT/Cubot_Velocity/
+```
+
+主要文件和职责：
+
+```text
+chassis_velocity.h/c
+    Chassis_SetVelocity(vx, vy, wz) 统一速度入口
+    目标保存、限幅、加减速限制、命令超时
+
+mecanum_kinematics.h/c
+    麦克纳姆/X-drive 逆运动学和正运动学
+    四轮顺序统一为 LF、RF、LB、RB
+
+wheel_feedback.h/c
+    封装 VESCMotorGetLogicalFeedbackERPM()
+    不修改原 VESC CAN 解析
+
+rpm_compensation.h/c
+    四轮独立分段死区补偿
+    小于死区时线性映射，不是全部强制钳到 900
+
+imu_state.h/c
+    封装已有 yaw、gyro、acc，不修改 IMU 驱动
+
+state_estimator.h/c
+    第一版互补融合，输出 RobotState
+    已保留 TODO(EKF) 和 EKF 模式入口
+
+slip_detector.h/c
+    abs(wz_wheel - gyro_z) 旋转滑移检测
+    包含阈值、滞回、进入/退出持续时间
+
+chassis_control.h/c
+    统一执行反馈读取、状态估计、控制仲裁、运动学、
+    RPM 补偿和 VESC 目标设置
+
+chassis_velocity_config.h
+    新框架参数集中管理
+
+mind.md
+    本次速度框架的详细设计说明
+```
+
+新框架采用标准车体坐标：
+
+```text
+vx > 0：向前，m/s
+vy > 0：向左，m/s
+wz > 0：逆时针/物理左转，rad/s
+```
+
+当前名为 `RPM` 的四轮值实际是 VESC 逻辑 `ERPM`。运动学模块用轮径、
+减速比和电机极对数在 ERPM 与车体速度之间换算。新模块内部轮序是
+`LF/RF/LB/RB`；调用旧 `VESCMotorSetFourRPM()` 时已适配其
+`LF/RF/RB/LB` 参数顺序。
+
+### 当前唯一任务结构
+
+```text
+StartROBOTTASK，5 ms / 200 Hz
+    |
+    v
+ChassisTask()
+    |
+    +--> App_TaskLoop() 更新原里程计
+    |
+    +--> ChassisControl_Update()
+            |
+            +--> STOP：四轮目标清零
+            +--> LEGACY：继续执行 OmniCalculate + LimitChassisOutput
+            +--> VELOCITY：新链已经设置四轮目标，跳过旧解算
+```
+
+实际 VESC CAN 发送仍由原 `MotorControlTask()` 以 5 ms 周期完成。工程中没有
+`StartCHASSISCONTROLTASK`，也没有第二个底盘任务句柄。协议邮箱只在
+`chassis_control.c` 的 `Nx16ProcessPendingCommand()` 中消费一次，避免两个
+任务或两条链同时写四轮目标。
+
+### 遥控器和串口控制的最终优先级
+
+当前 `CHASSIS_SERIAL_CONTROL_REQUIRE_RC = 1`，最终语义如下：
+
+1. 遥控器离线：强制停车，取消未完成的旧任务和新速度请求；不连接遥控器
+   串口不能驱动车辆。
+2. 遥控器在线并产生有效运动输入：立即由旧遥控链控制车辆，同时设置
+   `rc_override_latched`。
+3. `rc_override_latched` 一旦置位，本次持续速度会话已经被取消；摇杆回中后
+   旧的持续前进/旋转命令不能恢复。
+4. 上位机周期重发的速度帧在锁存期间会被消费并丢弃，不能重新抢回控制权。
+5. 上位机发送 STOP 或 INIT 结束本次会话并清除锁存；之后发送一条新的速度
+   命令才可再次进入速度模式。
+
+该逻辑已经完成实车验证。调试过程中曾因遥控器线缆脱落出现
+`rc_online = 0`，这不是固件仲裁故障。
+
+### V2 持续速度命令
+
+```text
+CMD2_MOVE_POLAR_SPEED (0x21)
+    param1：方向角，0=前、90=左、180=后、270=右
+    param2：平移速度，m/s
+
+CMD2_ROTATE_SPEED (0x27)
+    param1：1=左转，0=右转
+    param2：角速度绝对值，deg/s
+```
+
+`CMD2_MOVE_POLAR_SPEED` 在协议层换算：
+
+```text
+vx = cos(angle) * speed
+vy = sin(angle) * speed
+```
+
+随后调用 `Chassis_SetVelocity()`。`CMD2_ROTATE_SPEED` 采用左转正、右转负。
+旧定距离、定角度和路径命令仍走 LEGACY，不要迁移或改动其已验证参数。
+
+上位机 `keil/car_controlst.py` 会在持续运动期间每 100 ms 重新发布当前速度帧，
+而不只是单独发送心跳；`keil/test_v2_protocol.py` 会输出
+`cmd_vel 周期重发次数`。固件仍保留 500 ms 命令超时停车保护。
+
+当前上位机和 MCU 串口参数：
+
+```text
+端口：测试机当前使用 COM12
+波特率：115200
+MCU：AGENT_UART_HANDLE = huart1
+USART1：PB7 RX、PA9 TX
+```
+
+### 当前集中参数
+
+位于 `keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h`：
+
+```text
+控制周期                         0.005 s
+命令超时                         500 ms
+最大 vx                          0.22 m/s
+最大 vy                          0.08 m/s
+最大 wz                          0.60 rad/s
+最大平移加速度                   0.35 m/s^2
+最大平移减速度                   0.45 m/s^2
+最大角加速度                     1.50 rad/s^2
+
+轮径                             0.1075 m
+底盘长度                         0.4000 m
+底盘宽度                         0.4000 m
+减速比                           19.0
+电机极对数                       7.0
+
+MECANUM_YAW_COMMAND_SIGN          +1.0
+IMU_STATE_YAW_SIGN                -1.0
+
+LF/RF/LB/RB 死区                 均为 900 ERPM
+死区线性补偿起始比例              0.50
+```
+
+这些数值是当前可运行基线，不代表已经完成速度精度和四轮死区标定。
+
+### 今日实车验证结果
+
+已经确认：
+
+- 旧模式可用，原有功能未因新链路接入而失效。
+- 上位机持续速度指令不再只“点动一下”。
+- 遥控器可立即抢占持续速度控制。
+- 遥控器松杆后，已被抢占的持续速度指令不会恢复。
+- 定速度任意角度平移的方向正确。
+- 定速度旋转曾出现左右相反，根因是新运动学 yaw 命令符号；已将
+  `MECANUM_YAW_COMMAND_SIGN` 从 `-1.0f` 修正为 `+1.0f`。修正后的固件已编译，
+  但结束工作前未单独记录左右方向复验结果，下次先以 `10 deg/s` 快速确认。
+
+关于调试器：
+
+- 优先在 Watch 窗口直接展开 `g_chassis_velocity_debug` 结构体。
+- 不要把一个普通数值当作 Memory 窗口地址；此前看到的大段随机字节就是
+  因为把枚举值 `0x07` 当成地址，而不是变量内容。
+- `last_exit_reason`：0 正常、1 旧命令、2 遥控器离线、3 遥控器抢占、
+  4 轮反馈离线、5 IMU 离线、6 状态估计无效、7 命令超时。
+
+### 最新可烧录固件
+
+```text
+keil/MDK-ARM/work_Zxj/work_Zxj.hex
+生成时间：2026-07-28 19:54:52
+文件大小：134683 字节
+```
+
+最新 Keil 构建日志：
+
+```text
+Program Size: Code=47152 RO-data=660 RW-data=892 ZI-data=85676
+0 Error(s), 4 Warning(s)
+```
+
+当前警告未阻止生成固件。下次修改后仍需完整编译，确认至少保持 0 Error。
+
+### 下次工作的直接入口
+
+先阅读本节和：
+
+```text
+keil/CUBOT/Cubot_Velocity/mind.md
+keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
+```
+
+不要重新创建独立底盘任务，不要恢复“遥控器松杆后旧速度自动继续”的行为，
+也不要先调整已经验证的旧定距离/定角度参数。
+
+建议按以下顺序继续：
+
+1. 定量标定平移速度：依次测试 `0°/90°/180°/270°/45°/315°`，先用
+   `0.03 m/s`，再逐步测试 `0.05 m/s` 和 `0.08 m/s`。
+2. 同时记录 `cmd_target`、`cmd_output`、`target_rpm`、`feedback_rpm` 和
+   `wheel_velocity`，并用外部距离/时间计算实车速度。
+3. 先低速复验修正后的左右方向，再定量标定旋转：分别测试左/右
+   `10/20/30 deg/s`，对比命令、
+   `wheel_velocity.wz_wheel`、`imu.gyro_z` 和实车角度/时间。
+4. 单轮缓慢升速，分别测 LF/RF/LB/RB 的实际起转 ERPM，再修改四轮独立
+   死区和 `RPM_COMPENSATION_START_RATIO`。
+5. 外部实测与轮速反馈稳定后，再校准轮径/减速比；不要为了补偿单轮死区
+   随意修改几何参数。
+6. 当前新速度层只有限幅和斜率限制，还没有车体速度闭环 PID；状态估计器
+   仍是互补融合，EKF 是已标注的后续 TODO。完成基础标定后再逐步加入。
+
+保守测试命令示例：
+
+```powershell
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 0  --speed-mps 0.03 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only speed --speed-angle 45 --speed-mps 0.03 --speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed                --rotate-speed-dps 10 --rotate-speed-duration 5
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-right --rotate-speed-dps 10 --rotate-speed-duration 5
+```
+
+落地测试时必须保留急停空间，先从低速度开始；未确认四轮反馈和 IMU 符号前
+不要直接提高速度。
+
+## 2026-07-27 历史工作入口（仅供参数和过程参考）
 
 当前代码基线：
 

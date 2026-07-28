@@ -18,15 +18,15 @@ void OSTaskInit()
 //    insTaskHandle = osThreadCreate(osThread(instask), NULL); // 由于是阻塞读取传感器,为姿态解算设置较高优先级,确保以1khz的频率执行
 //    // // 后续修改为读取传感器数据准备好的中断处理,
 	
-    // 当前底盘控制拆成三层：底盘解算、电机下发、守护监控。
+    // 唯一底盘任务负责新旧链路仲裁；电机下发和守护任务保持独立。
 	osThreadDef(motortask, StartMOTORTASK, osPriorityNormal, 0, 512);
     motorTaskHandle = osThreadCreate(osThread(motortask), NULL);
 	
     osThreadDef(daemontask, StartDAEMONTASK, osPriorityBelowNormal, 0, 512);
     daemonTaskHandle = osThreadCreate(osThread(daemontask), NULL);	
 	
-	osThreadDef(chassiscontroltask, StartCHASSISCONTROLTASK, osPriorityAboveNormal, 0, 1024);
-    chassisControlTaskHandle = osThreadCreate(osThread(chassiscontroltask), NULL);
+	osThreadDef(robottask, StartROBOTTASK, osPriorityAboveNormal, 0, 1024);
+    robotTaskHandle = osThreadCreate(osThread(robottask), NULL);
 	
 }
 

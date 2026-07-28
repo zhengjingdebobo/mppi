@@ -18,7 +18,6 @@
 static ChassisControlMode_e chassis_control_mode = CHASSIS_CONTROL_MODE_LEGACY;
 static RobotState_t chassis_robot_state;
 static uint8_t chassis_rc_override_latched;
-static uint32_t chassis_rc_neutral_since_ms;
 ChassisVelocityDebug_t g_chassis_velocity_debug;
 
 static uint8_t ChassisControl_SerialVelocityAllowed(void)
@@ -32,8 +31,6 @@ static uint8_t ChassisControl_SerialVelocityAllowed(void)
 
 static void ChassisControl_UpdateRemoteDebug(void)
 {
-    uint32_t now_ms = HAL_GetTick();
-
     g_chassis_velocity_debug.rc_online =
         RemoteControlIsOnline() ? 1u : 0u;
     g_chassis_velocity_debug.rc_manual_enabled =
@@ -64,26 +61,6 @@ static void ChassisControl_UpdateRemoteDebug(void)
     if (g_chassis_velocity_debug.rc_override_active)
     {
         chassis_rc_override_latched = 1u;
-        chassis_rc_neutral_since_ms = 0u;
-    }
-    else if (chassis_rc_override_latched &&
-             g_chassis_velocity_debug.rc_online &&
-             g_chassis_velocity_debug.rc_manual_enabled)
-    {
-        if (chassis_rc_neutral_since_ms == 0u)
-        {
-            chassis_rc_neutral_since_ms = now_ms;
-        }
-        else if ((uint32_t)(now_ms - chassis_rc_neutral_since_ms) >=
-                 CHASSIS_VELOCITY_RC_RELEASE_HOLD_MS)
-        {
-            chassis_rc_override_latched = 0u;
-            chassis_rc_neutral_since_ms = 0u;
-        }
-    }
-    else if (!g_chassis_velocity_debug.rc_online)
-    {
-        chassis_rc_neutral_since_ms = 0u;
     }
 
     g_chassis_velocity_debug.rc_override_latched =
@@ -92,7 +69,6 @@ static void ChassisControl_UpdateRemoteDebug(void)
 
 static void ChassisControl_StopNewChain(void)
 {
-    VESCMotorStopAll();
     ChassisVelocity_Stop();
 }
 
@@ -139,7 +115,6 @@ void ChassisControl_Init(void)
     memset(&chassis_robot_state, 0, sizeof(chassis_robot_state));
     memset(&g_chassis_velocity_debug, 0, sizeof(g_chassis_velocity_debug));
     chassis_rc_override_latched = 0u;
-    chassis_rc_neutral_since_ms = 0u;
     chassis_control_mode = CHASSIS_CONTROL_MODE_LEGACY;
     g_chassis_velocity_debug.mode = chassis_control_mode;
 }
@@ -167,6 +142,17 @@ static void ChassisControl_ExitVelocityMode(
 ChassisControlMode_e ChassisControl_GetMode(void)
 {
     return chassis_control_mode;
+}
+
+uint8_t ChassisControl_RemoteOwnsControl(void)
+{
+    return chassis_rc_override_latched;
+}
+
+void ChassisControl_ClearRemoteOverrideLatch(void)
+{
+    chassis_rc_override_latched = 0u;
+    g_chassis_velocity_debug.rc_override_latched = 0u;
 }
 
 void ChassisControl_GetRobotState(RobotState_t *state)
@@ -248,7 +234,7 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
     return CHASSIS_VELOCITY_EXIT_NONE;
 }
 
-void Chassis_Control_Task(void)
+ChassisControlResult_e ChassisControl_Update(void)
 {
     ChassisVelocityExitReason_e exit_reason;
 
@@ -256,8 +242,8 @@ void Chassis_Control_Task(void)
     ChassisControl_UpdateRemoteDebug();
 
     /*
-     * V2 命令邮箱必须在新旧两种模式下都被消费，保证 STOP/INIT 随时有效。
-     * 旧 ChassisTask 内部的重复调用不会重复执行，邮箱首次读取后已经清空。
+     * 协议邮箱在唯一的 ChassisTask 上下文中只消费一次。
+     * 遥控状态已经先更新，协议层可据此丢弃抢占期间的连续速度帧。
      */
     Nx16ProcessPendingCommand();
 
@@ -274,8 +260,41 @@ void Chassis_Control_Task(void)
         ChassisVelocity_GetCommandAgeMs();
 
     /*
-     * 遥控器抢占采用锁存仲裁。上位机即使持续发布 cmd_vel，也不能在
-     * 摇杆操作期间反复申请新速度模式；旧 ChassisTask 可直接输出遥控轮速。
+     * 遥控器离线是全底盘运动许可条件。
+     * 无论当前收到何种串口运动命令，都清除新速度请求并强制停车。
+     */
+    if (!ChassisControl_SerialVelocityAllowed())
+    {
+        /*
+         * 遥控器掉线后撤销所有未完成运动，禁止重新上线时续跑旧任务。
+         * 这里只复用已有状态和清理接口，不修改遥控器及 VESC 驱动。
+         */
+        if (nx16_ctrl.InTask != 0u || nx16_ctrl.RxFlag != 0u)
+        {
+            ChassisClearApiCommand();
+            nx16_ctrl.InTask = 0u;
+            nx16_ctrl.RxFlag = 0u;
+            nx16_ctrl.Status = STATUS_CMD_FAILED;
+        }
+        if (chassis_control_mode == CHASSIS_CONTROL_MODE_VELOCITY ||
+            ChassisVelocity_IsControlRequested())
+        {
+            ChassisControl_ExitVelocityMode(
+                CHASSIS_VELOCITY_EXIT_RC_OFFLINE);
+        }
+        else
+        {
+            ChassisVelocity_Stop();
+        }
+        chassis_control_mode = CHASSIS_CONTROL_MODE_LEGACY;
+        g_chassis_velocity_debug.control_valid = 0u;
+        g_chassis_velocity_debug.mode = chassis_control_mode;
+        return CHASSIS_CONTROL_RESULT_STOP;
+    }
+
+    /*
+     * 遥控器运动输入具有最高优先级。
+     * 同一周期立即退出新链并交给 ChassisTask 的旧遥控逻辑，不先停车等待。
      */
     if (chassis_rc_override_latched)
     {
@@ -288,72 +307,57 @@ void Chassis_Control_Task(void)
         {
             ChassisVelocity_Stop();
         }
+        chassis_control_mode = CHASSIS_CONTROL_MODE_LEGACY;
+        g_chassis_velocity_debug.control_valid = 0u;
+        g_chassis_velocity_debug.mode = chassis_control_mode;
+        return CHASSIS_CONTROL_RESULT_LEGACY;
     }
 
-    /* 旧 8 字节命令和路径命令仍由原 ChassisTask 处理。 */
+    /* 旧 8 字节命令和路径命令保持走原 ChassisTask 状态机。 */
     if (nx16_ctrl.RxFlag != 0u)
     {
         ChassisControl_ExitVelocityMode(
             CHASSIS_VELOCITY_EXIT_LEGACY_COMMAND);
+        g_chassis_velocity_debug.control_valid = 0u;
+        g_chassis_velocity_debug.mode = chassis_control_mode;
+        return CHASSIS_CONTROL_RESULT_LEGACY;
     }
 
-    if (chassis_control_mode == CHASSIS_CONTROL_MODE_VELOCITY)
+    if (!ChassisVelocity_IsControlRequested())
     {
-        if (!ChassisControl_SerialVelocityAllowed())
+        if (chassis_control_mode == CHASSIS_CONTROL_MODE_VELOCITY)
         {
             ChassisControl_ExitVelocityMode(
-                CHASSIS_VELOCITY_EXIT_RC_OFFLINE);
+                CHASSIS_VELOCITY_EXIT_COMMAND_TIMEOUT);
+            g_chassis_velocity_debug.control_valid = 0u;
+            g_chassis_velocity_debug.mode = chassis_control_mode;
+            return CHASSIS_CONTROL_RESULT_STOP;
         }
-        else if (chassis_rc_override_latched)
-        {
-            ChassisControl_ExitVelocityMode(
-                CHASSIS_VELOCITY_EXIT_RC_OVERRIDE);
-        }
-        else
-        {
-            exit_reason = ChassisControl_RunVelocityChain();
-            if (exit_reason != CHASSIS_VELOCITY_EXIT_NONE)
-            {
-                ChassisControl_ExitVelocityMode(exit_reason);
-            }
-        }
-    }
-    else if (ChassisVelocity_IsControlRequested())
-    {
-        if (!ChassisControl_SerialVelocityAllowed())
-        {
-            ChassisControl_ExitVelocityMode(
-                CHASSIS_VELOCITY_EXIT_RC_OFFLINE);
-        }
-        else if (chassis_rc_override_latched)
-        {
-            /*
-             * 遥控器已主动接管时不允许新速度链先输出一个周期，
-             * 避免表现为“电机点动一下后停止”。
-             */
-            ChassisControl_ExitVelocityMode(
-                CHASSIS_VELOCITY_EXIT_RC_OVERRIDE);
-        }
-        else
-        {
-            chassis_control_mode = CHASSIS_CONTROL_MODE_VELOCITY;
-            g_chassis_velocity_debug.velocity_mode_enter_count++;
-            g_chassis_velocity_debug.last_exit_reason =
-                CHASSIS_VELOCITY_EXIT_NONE;
-            StateEstimator_Reset();
-            SlipDetector_Reset();
-            exit_reason = ChassisControl_RunVelocityChain();
-            if (exit_reason != CHASSIS_VELOCITY_EXIT_NONE)
-            {
-                ChassisControl_ExitVelocityMode(exit_reason);
-            }
-        }
+        chassis_control_mode = CHASSIS_CONTROL_MODE_LEGACY;
+        g_chassis_velocity_debug.control_valid = 0u;
+        g_chassis_velocity_debug.mode = chassis_control_mode;
+        return CHASSIS_CONTROL_RESULT_LEGACY;
     }
 
-    if (chassis_control_mode == CHASSIS_CONTROL_MODE_LEGACY)
+    if (chassis_control_mode != CHASSIS_CONTROL_MODE_VELOCITY)
     {
-        ChassisTask();
+        chassis_control_mode = CHASSIS_CONTROL_MODE_VELOCITY;
+        g_chassis_velocity_debug.velocity_mode_enter_count++;
+        g_chassis_velocity_debug.last_exit_reason =
+            CHASSIS_VELOCITY_EXIT_NONE;
+        StateEstimator_Reset();
+        SlipDetector_Reset();
+    }
+
+    exit_reason = ChassisControl_RunVelocityChain();
+    if (exit_reason != CHASSIS_VELOCITY_EXIT_NONE)
+    {
+        ChassisControl_ExitVelocityMode(exit_reason);
+        g_chassis_velocity_debug.control_valid = 0u;
+        g_chassis_velocity_debug.mode = chassis_control_mode;
+        return CHASSIS_CONTROL_RESULT_STOP;
     }
 
     g_chassis_velocity_debug.mode = chassis_control_mode;
+    return CHASSIS_CONTROL_RESULT_VELOCITY;
 }

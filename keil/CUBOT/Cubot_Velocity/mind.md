@@ -63,16 +63,23 @@ RobotState{x, y, yaw, vx, vy, wz}
 
 ## 三、控制任务
 
-`StartCHASSISCONTROLTASK` 是实际 FreeRTOS 任务，周期为 `5 ms`。它调用 `Chassis_Control_Task()`。
+`StartROBOTTASK` 是唯一的底盘 FreeRTOS 任务，周期为 `5 ms`，只调用
+`ChassisTask()`。新速度框架不再创建第二个底盘控制任务。
 
-任务具有两种模式：
+`ChassisTask()` 每周期先调用 `ChassisControl_Update()`，该函数只返回一种
+执行结果：
 
-- `CHASSIS_CONTROL_MODE_LEGACY`：调用原 `ChassisTask()`，保持已有功能。
-- `CHASSIS_CONTROL_MODE_VELOCITY`：执行新的速度控制链。
+- `CHASSIS_CONTROL_RESULT_STOP`：遥控器离线或新链故障，四轮目标清零。
+- `CHASSIS_CONTROL_RESULT_LEGACY`：执行原遥控、定距离、定角度和路径逻辑。
+- `CHASSIS_CONTROL_RESULT_VELOCITY`：新速度链已生成四轮目标，不再执行旧解算。
 
-上电默认是旧模式。只有调用 `Chassis_SetVelocity()` 后才请求新速度模式。遥控器有效运动输入具有最高优先级，会终止新速度链并回到旧模式。
+`CHASSIS_CONTROL_MODE_LEGACY/VELOCITY` 仅表示当前选中的控制链，不再用于
+一个任务嵌套调用另一个任务。每周期只消费一次协议邮箱，并且只允许一条
+控制链设置四轮目标。
 
-当前继续遵守原工程的 `CHASSIS_SERIAL_CONTROL_REQUIRE_RC` 配置：该宏为 `1` 时，遥控器离线不会允许新串口速度链接管。
+控制优先级固定为：遥控器离线强制停车；遥控器有效运动输入直接执行旧
+遥控链；遥控器在线且回中时才允许新 `cmd_vel` 或旧串口任务。遥控器掉线
+还会撤销未完成任务，防止重新上线后旧任务续跑。
 
 实际 VESC CAN 发送仍由已有 `MotorControlTask()` 完成，避免两个任务同时占用 CAN 发送链。
 
@@ -96,8 +103,9 @@ V2 STOP、INIT 和旧协议命令会先释放新速度控制权，再交给原�
 
 新框架内部车体速度全部使用 SI 单位。
 
-实车原始 IMU 和旧旋转输出均以物理左转为负；新适配层通过
-`IMU_STATE_YAW_SIGN` 和 `MECANUM_YAW_COMMAND_SIGN` 转换为标准的逆时针正。
+实车验证后，新轮速运动学的正 `yaw_raw` 对应物理左转，因此
+`MECANUM_YAW_COMMAND_SIGN=+1`；原始 IMU 的物理左转仍为负，通过
+`IMU_STATE_YAW_SIGN=-1` 转换。两路最终都遵循标准的逆时针为正。
 
 为了兼容当前 VESC 接口，`MecanumWheelRPM_t` 和 `WheelFeedback_GetRPM()` 中名称为 `rpm` 的数据当前实际表示逻辑 `ERPM`。运动学模块根据轮径、减速比和电机极对数完成 `ERPM` 与车体速度之间的换算。
 
@@ -207,7 +215,10 @@ cycle_count
 `rc_override_active` 用于判断是否因遥控器偏中而退出。
 遥控器有效运动输入会设置 `rc_override_latched`。锁存期间上位机周期
 发布的 `cmd_vel` 不得重新接管，旧 `ChassisTask` 直接使用遥控摇杆生成
-四轮目标；摇杆回中稳定 300 ms 后才释放锁存。
+四轮目标。摇杆回中后锁存继续保持，当前持续速度会话不会恢复；只有
+上位机发送 STOP/INIT 结束本次会话后，后续新速度命令才可重新接管。
+遥控所有权判断位于控制任务最前端，早于新旧模式判断和 V2 速度邮箱消费；
+协议层在锁存期间会消费并丢弃平移/旋转速度帧，但不屏蔽 STOP/INIT。
 V2 心跳由协议层确认有效后，在 200 Hz 控制任务中刷新速度命令，
 避免 UART 中断和首次速度命令之间的先后时序影响保活。
 实车测试程序进一步采用标准 `cmd_vel` 发布方式：连续运动期间每

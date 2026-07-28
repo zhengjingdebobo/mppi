@@ -9,6 +9,7 @@
 #include "path_tracker.h"
 #include "drv_dwt.h"
 #include "mecanum_kinematics.h"
+#include "chassis_control.h"
 #include <stdbool.h>  
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD 0.0174532925f
@@ -631,8 +632,6 @@ static void OmniCalculate()
     uint8_t serial_motion_pending;
     HWT9053Heading_t heading;
 
-    Nx16ProcessPendingCommand();
-
     rc_vy_raw = (int16_t)rc_ctrl.rc_channels[0] - 1024;
     rc_vx_raw = (int16_t)rc_ctrl.rc_channels[1] - 1024;
     rc_yaw_raw = (int16_t)rc_ctrl.rc_channels[3] - 1024;
@@ -1069,17 +1068,27 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
 // ===============================ChassisTask====================================
 void ChassisTask()
 {
-
-    if ((!RemoteControlIsOnline() || rc_ctrl.rc_channels[2] < 300) && !ChassisApiOverrideIsActive())
-    {
-        VESCMotorStopAll();
-    }
+    ChassisControlResult_e control_result;
 
     // 先刷新位姿，再做控制解算，避免本周期使用过期状态
     App_TaskLoop();
 
-    OmniCalculate();
-    LimitChassisOutput();
+    /*
+     * 唯一底盘任务中的统一仲裁：
+     * STOP     - 遥控器离线或新链故障，四轮目标清零；
+     * LEGACY   - 执行已有遥控/定距离/定角度控制；
+     * VELOCITY - 新速度链已经生成四轮目标，不再进入旧解算。
+     */
+    control_result = ChassisControl_Update();
+    if (control_result == CHASSIS_CONTROL_RESULT_STOP)
+    {
+        VESCMotorStopAll();
+    }
+    else if (control_result == CHASSIS_CONTROL_RESULT_LEGACY)
+    {
+        OmniCalculate();
+        LimitChassisOutput();
+    }
     
     // 上位机回传和控制解算解耦，避免串口发送阻塞主控制路径
     uint32_t now_tick = xTaskGetTickCount();

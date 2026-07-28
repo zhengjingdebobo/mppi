@@ -15,6 +15,14 @@ typedef enum
     CHASSIS_CONTROL_MODE_VELOCITY
 } ChassisControlMode_e;
 
+/* ChassisTask 每周期根据此结果只执行一条控制链。 */
+typedef enum
+{
+    CHASSIS_CONTROL_RESULT_STOP = 0,
+    CHASSIS_CONTROL_RESULT_LEGACY,
+    CHASSIS_CONTROL_RESULT_VELOCITY
+} ChassisControlResult_e;
+
 /* 新速度模式最近一次退出原因，数值可直接在 Keil Watch 中查看。 */
 typedef enum
 {
@@ -63,11 +71,17 @@ extern ChassisVelocityDebug_t g_chassis_velocity_debug;
 /* 初始化新框架；默认保持旧底盘控制模式。 */
 void ChassisControl_Init(void);
 
-/* 由 FreeRTOS 底盘任务以 200 Hz 调用。 */
-void Chassis_Control_Task(void);
+/* 由唯一的 ChassisTask 以 200 Hz 调用，完成输入仲裁和新速度链更新。 */
+ChassisControlResult_e ChassisControl_Update(void);
 
 ChassisControlMode_e ChassisControl_GetMode(void);
 void ChassisControl_RequestLegacyMode(void);
 void ChassisControl_GetRobotState(RobotState_t *state);
+
+/* 协议层调用：返回 1 表示遥控器当前持有底盘控制权。 */
+uint8_t ChassisControl_RemoteOwnsControl(void);
+
+/* STOP/INIT 调用：结束遥控器对当前串口速度会话的取消锁存。 */
+void ChassisControl_ClearRemoteOverrideLatch(void);
 
 #endif /* CHASSIS_CONTROL_H */

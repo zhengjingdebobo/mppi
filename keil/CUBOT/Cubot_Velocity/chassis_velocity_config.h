@@ -29,10 +29,11 @@
 #define MECANUM_INV_SQRT2                       0.70710678f
 
 /*
- * 实车现有坐标中，物理左转对应负 gyro_z 和负旧 yaw_raw。
- * 新框架统一为逆时针正，因此在适配层同时反向。
+ * 实车验证：新运动学中正 yaw_raw 对应物理左转。
+ * 新框架采用逆时针为正，因此轮速运动学保持正号；
+ * 原始 IMU 的物理左转仍为负，继续在 IMU 适配层单独反向。
  */
-#define MECANUM_YAW_COMMAND_SIGN                (-1.0f)
+#define MECANUM_YAW_COMMAND_SIGN                (1.0f)
 #define IMU_STATE_YAW_SIGN                      (-1.0f)
 
 /*
@@ -60,7 +61,5 @@
 /* 遥控器抢占新速度控制时使用的摇杆死区。 */
 #define CHASSIS_VELOCITY_RC_MOVE_DEADBAND       35
 #define CHASSIS_VELOCITY_RC_YAW_DEADBAND        80
-/* 遥控摇杆回中后持续此时间，才允许上位机重新取得速度控制权。 */
-#define CHASSIS_VELOCITY_RC_RELEASE_HOLD_MS      300u
 
 #endif /* CHASSIS_VELOCITY_CONFIG_H */

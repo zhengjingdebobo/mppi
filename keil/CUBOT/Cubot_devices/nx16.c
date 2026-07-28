@@ -588,6 +588,11 @@ void Nx16ResetProtocolState(void)
     agent_v2_last_alive_tick = 0u;
     agent_v2_alive_valid = 0u;
     NX16_CRITICAL_EXIT();
+    /*
+     * STOP/INIT结束当前连续速度会话后，才允许后续新命令重新申请控制权。
+     * 遥控器回中本身不会恢复已被取消的旧cmd_vel。
+     */
+    ChassisControl_ClearRemoteOverrideLatch();
 }
 
 uint8_t Nx16V2LinkIsAlive(uint32_t timeout_ms)
@@ -626,7 +631,16 @@ void Nx16ProcessPendingCommand(void)
     {
     case CMD2_MOVE_POLAR_SPEED:
         legacy_cmd = (pending.param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
-        if (pending.param1 != pending.param1 || pending.param2 != pending.param2)
+        if (ChassisControl_RemoteOwnsControl())
+        {
+            /*
+             * 遥控器抢占期间只消费并丢弃周期 cmd_vel，不修改旧底盘输出。
+             * 上位机下一周期仍会重发，遥控器释放后可自动恢复。
+             */
+            ChassisVelocity_Stop();
+            api_result = CHASSIS_API_BUSY;
+        }
+        else if (pending.param1 != pending.param1 || pending.param2 != pending.param2)
         {
             api_result = CHASSIS_API_BAD_PARAM;
         }
@@ -675,7 +689,12 @@ void Nx16ProcessPendingCommand(void)
                                  CHASSIS_ROTATE_LEFT :
                                  CHASSIS_ROTATE_RIGHT;
         legacy_cmd = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
-        if (pending.param1 != pending.param1 ||
+        if (ChassisControl_RemoteOwnsControl())
+        {
+            ChassisVelocity_Stop();
+            api_result = CHASSIS_API_BUSY;
+        }
+        else if (pending.param1 != pending.param1 ||
             pending.param2 != pending.param2 ||
             pending.param2 < 0.0f)
         {
