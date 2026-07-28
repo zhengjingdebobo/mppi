@@ -1,5 +1,6 @@
 
 #include "control_logic.h"
+#include "chassis_control.h"
 
 
 
@@ -7,6 +8,7 @@
 
 osThreadId insTaskHandle;
 osThreadId robotTaskHandle;
+osThreadId chassisControlTaskHandle;
 osThreadId motorTaskHandle;
 osThreadId daemonTaskHandle;
 osThreadId uiTaskHandle;
@@ -70,6 +72,22 @@ __attribute__((noreturn)) void StartROBOTTASK(void const *argument)
     for (;;)
     {
         ChassisTask();
+        vTaskDelayUntil(&last_wake, period);
+    }
+}
+
+/*
+ * 新底盘统一控制任务。
+ * 默认处于 LEGACY 模式，仍然调用原 ChassisTask；收到新的 cmd_vel 后才切换。
+ */
+__attribute__((noreturn)) void StartCHASSISCONTROLTASK(void const *argument)
+{
+    TickType_t last_wake = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(5u);
+
+    for (;;)
+    {
+        Chassis_Control_Task();
         vTaskDelayUntil(&last_wake, period);
     }
 }

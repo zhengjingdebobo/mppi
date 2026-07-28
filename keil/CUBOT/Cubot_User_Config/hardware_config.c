@@ -1,5 +1,6 @@
 #include "hardware_config.h"
 #include "vesc_motor.h"
+#include "chassis_control.h"
 
 
 
@@ -24,8 +25,8 @@ void OSTaskInit()
     osThreadDef(daemontask, StartDAEMONTASK, osPriorityBelowNormal, 0, 512);
     daemonTaskHandle = osThreadCreate(osThread(daemontask), NULL);	
 	
-	osThreadDef(robottask, StartROBOTTASK, osPriorityAboveNormal, 0, 1024);
-    robotTaskHandle = osThreadCreate(osThread(robottask), NULL);
+	osThreadDef(chassiscontroltask, StartCHASSISCONTROLTASK, osPriorityAboveNormal, 0, 1024);
+    chassisControlTaskHandle = osThreadCreate(osThread(chassiscontroltask), NULL);
 	
 }
 
@@ -49,6 +50,7 @@ void RobotInit()
     
     // 底盘初始化里会同时建好 VESC 输出链路和里程计兼容结构。
     ChassisInit();
+    ChassisControl_Init();
 
 
     OSTaskInit(); // 创建基础任务

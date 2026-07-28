@@ -10,6 +10,8 @@
 #include "drv_dwt.h"
 #include "hardware_config.h"
 #include "vesc_motor.h"
+#include "chassis_control.h"
+#include "chassis_velocity.h"
 
 #define NX16_CRITICAL_ENTER()  taskENTER_CRITICAL()
 #define NX16_CRITICAL_EXIT()   taskEXIT_CRITICAL()
@@ -539,6 +541,7 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
     if (cmd_id == CMD2_HEARTBEAT)
     {
         nx16_ctrl.CommandID_test_zxj = CMD2_HEARTBEAT;
+        ChassisVelocity_NotifyHeartbeatFromISR();
         return;
     }
 
@@ -623,10 +626,29 @@ void Nx16ProcessPendingCommand(void)
     {
     case CMD2_MOVE_POLAR_SPEED:
         legacy_cmd = (pending.param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
-        api_result = ChassisMoveByAngleAndSpeed(pending.param1, pending.param2);
+        if (pending.param1 != pending.param1 || pending.param2 != pending.param2)
+        {
+            api_result = CHASSIS_API_BAD_PARAM;
+        }
+        else if (nx16_ctrl.InTask != 0u)
+        {
+            api_result = CHASSIS_API_BUSY;
+        }
+        else
+        {
+            float angle_rad = pending.param1 * DEG_TO_RAD;
+            float vx_mps = cosf(angle_rad) * pending.param2;
+            float vy_mps = sinf(angle_rad) * pending.param2;
+
+            ChassisClearApiCommand();
+            Chassis_SetVelocity(vx_mps, vy_mps, 0.0f);
+            api_result = CHASSIS_API_OK;
+        }
         break;
 
     case CMD2_MOVE_POLAR_DISTANCE:
+        ChassisVelocity_Stop();
+        ChassisControl_RequestLegacyMode();
         legacy_cmd = (pending.param2 >= 0.0f) ? CMD_MOVE_FORWARD : CMD_MOVE_BACKWARD;
         api_result = ChassisMoveByAngleAndDistance(pending.param1, pending.param2);
         if (api_result == CHASSIS_API_OK)
@@ -639,6 +661,8 @@ void Nx16ProcessPendingCommand(void)
     {
         ChassisRotateDir_e dir = (((int32_t)(pending.param1 + 0.5f)) == 0) ?
                                  CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
+        ChassisVelocity_Stop();
+        ChassisControl_RequestLegacyMode();
         legacy_cmd = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
         api_result = ChassisRotateInPlace(dir, pending.param2);
         break;
@@ -646,20 +670,44 @@ void Nx16ProcessPendingCommand(void)
 
     case CMD2_ROTATE_SPEED:
     {
-        ChassisRotateDir_e dir = (pending.param1 >= 0.5f) ?
-                                 CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
+        uint8_t turn_left = (pending.param1 >= 0.5f) ? 1u : 0u;
+        ChassisRotateDir_e dir = turn_left ?
+                                 CHASSIS_ROTATE_LEFT :
+                                 CHASSIS_ROTATE_RIGHT;
         legacy_cmd = (dir == CHASSIS_ROTATE_LEFT) ? CMD_ROTATE_CCW : CMD_ROTATE_CW;
-        api_result = ChassisRotateAtSpeed(dir, pending.param2);
+        if (pending.param1 != pending.param1 ||
+            pending.param2 != pending.param2 ||
+            pending.param2 < 0.0f)
+        {
+            api_result = CHASSIS_API_BAD_PARAM;
+        }
+        else if (nx16_ctrl.InTask != 0u)
+        {
+            api_result = CHASSIS_API_BUSY;
+        }
+        else
+        {
+            float wz_radps = pending.param2 * DEG_TO_RAD;
+
+            if (!turn_left) wz_radps = -wz_radps;
+            ChassisClearApiCommand();
+            Chassis_SetVelocity(0.0f, 0.0f, wz_radps);
+            api_result = CHASSIS_API_OK;
+        }
         break;
     }
 
     case CMD2_STOP:
+        ChassisVelocity_Stop();
+        ChassisControl_RequestLegacyMode();
         ChassisStopCommand();
         Nx16ResetProtocolState();
         return;
 
     case CMD2_INIT:
         legacy_cmd = CMD_INIT;
+        ChassisVelocity_Stop();
+        ChassisControl_RequestLegacyMode();
         ChassisClearApiCommand();
         TaskInit();
         Nx16ResetProtocolState();

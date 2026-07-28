@@ -8,6 +8,7 @@
 #include "vesc_motor.h"
 #include "path_tracker.h"
 #include "drv_dwt.h"
+#include "mecanum_kinematics.h"
 #include <stdbool.h>  
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD 0.0174532925f
@@ -1130,6 +1131,7 @@ static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float 
     float forward_raw;
     float right_raw;
     float yaw_raw;
+    MecanumWheelRPM_t wheel_rpm;
 
     if (speed_mps_per_erpm <= 1.0e-8f) speed_mps_per_erpm = 4.24e-5f;
     if (inv_sqrt2 <= 0.0f) inv_sqrt2 = 0.70710678f;
@@ -1142,10 +1144,19 @@ static void Chassis_SetMoveWheelSpeed(float forward_mps, float right_mps, float 
     right_raw = forward_mps / speed_mps_per_erpm;
     yaw_raw = yaw_cmd * rc_ctrl.chassis_k * 1.06f;
 
-    rc_ctrl.vt_lf = (-forward_raw - right_raw) * inv_sqrt2 + yaw_raw;
-    rc_ctrl.vt_rf = ( forward_raw - right_raw) * inv_sqrt2 - yaw_raw;
-    rc_ctrl.vt_lb = (-forward_raw + right_raw) * inv_sqrt2 - yaw_raw;
-    rc_ctrl.vt_rb = ( forward_raw + right_raw) * inv_sqrt2 + yaw_raw;
+    /*
+     * 复用新运动学模块中的旧四轮混合矩阵。
+     * 输入、输出和旧实现完全一致，不改变已验证任务的控制行为。
+     */
+    MecanumKinematics_LegacyMix(forward_raw,
+                                right_raw,
+                                yaw_raw,
+                                inv_sqrt2,
+                                &wheel_rpm);
+    rc_ctrl.vt_lf = wheel_rpm.lf_rpm;
+    rc_ctrl.vt_rf = wheel_rpm.rf_rpm;
+    rc_ctrl.vt_lb = wheel_rpm.lb_rpm;
+    rc_ctrl.vt_rb = wheel_rpm.rb_rpm;
 }
 
 static void Chassis_StartMoveTask(int8_t direction)

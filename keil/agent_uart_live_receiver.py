@@ -17,25 +17,25 @@
 
 常用命令：
 1. 只看 VESC
-   python keil/agent_uart_live_receiver.py COM12 9600
+   python keil/agent_uart_live_receiver.py COM12 
 
 2. 看 VESC + STATUS
-   python keil/agent_uart_live_receiver.py COM12 9600 --show-status
+   python keil/agent_uart_live_receiver.py COM12 --show-status
 
 3. 看 VESC + IMU
-   python keil/agent_uart_live_receiver.py COM12 9600 --show-imu
+   python keil/agent_uart_live_receiver.py COM12 --show-imu
 
 4. 看 IMU 底层诊断
-   python keil/agent_uart_live_receiver.py COM12 9600 --show-imu --imu-diag
+   python keil/agent_uart_live_receiver.py COM12 --show-imu --imu-diag
 
 5. 打印接收统计
-   python keil/agent_uart_live_receiver.py COM12 9600 --raw-stats
+   python keil/agent_uart_live_receiver.py COM12 --raw-stats
 
 6. 保存 CSV
-   python keil/agent_uart_live_receiver.py COM12 9600 --csv-prefix log/run1
+   python keil/agent_uart_live_receiver.py COM12 --csv-prefix log/run1
 
 7. 实时绘制 IMU 曲线
-   python keil/agent_uart_live_receiver.py COM12 9600 --plot --show-imu
+   python keil/agent_uart_live_receiver.py COM12 --plot --show-imu
 
 参数中文备注：
 --show-status

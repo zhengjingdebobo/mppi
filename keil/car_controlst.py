@@ -98,6 +98,9 @@ class CarController:
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.continuous_command_active = threading.Event()
         self.heartbeat_period_s = 0.10
+        # 标准 cmd_vel 采用周期发布：保存当前连续速度帧并由后台线程重发。
+        self._continuous_v2_command = None
+        self.continuous_refresh_tx_count = 0
         self.lock = threading.Lock()
         self.serial_lock = threading.RLock()
         self.imu_log_path: Optional[str] = None
@@ -173,6 +176,7 @@ class CarController:
 
     def disconnect(self):
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         self.is_running = False
         current_thread = threading.current_thread()
         if self.listener_thread and self.listener_thread.is_alive() and self.listener_thread is not current_thread:
@@ -189,10 +193,15 @@ class CarController:
         self.close_imu_log()
 
     def _heartbeat_loop(self):
-        """Keep continuous V2 velocity modes alive; MCU stops them after link timeout."""
+        """以固定周期重新发布当前 cmd_vel，避免连续速度命令超时。"""
         while self.is_running:
             if self.continuous_command_active.is_set():
-                if not self.send_heartbeat_v2():
+                command = self._continuous_v2_command
+                if command is None:
+                    self.continuous_command_active.clear()
+                elif self._send_command_v2(*command):
+                    self.continuous_refresh_tx_count += 1
+                else:
                     self.continuous_command_active.clear()
             time.sleep(self.heartbeat_period_s)
 
@@ -727,6 +736,7 @@ class CarController:
     def initialize_car_v2(self) -> bool:
         """Send V2 init command to reset task state and API override state."""
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         if not self._send_command_v2(self.CMD2_INIT):
             return False
         time.sleep(1.5)
@@ -787,9 +797,16 @@ class CarController:
             return False
         ok = self._send_command_v2(self.CMD2_MOVE_POLAR_SPEED, angle_deg, speed_mps)
         if ok and abs(speed_mps) >= 1e-4:
+            self.continuous_refresh_tx_count = 0
+            self._continuous_v2_command = (
+                self.CMD2_MOVE_POLAR_SPEED,
+                float(angle_deg),
+                float(speed_mps),
+            )
             self.continuous_command_active.set()
         elif ok:
             self.continuous_command_active.clear()
+            self._continuous_v2_command = None
         return ok
 
     def rotate_with_speed(self, turn_left: bool, angular_speed_dps: float) -> bool:
@@ -806,9 +823,16 @@ class CarController:
             abs(angular_speed_dps),
         )
         if ok and abs(angular_speed_dps) >= 1e-4:
+            self.continuous_refresh_tx_count = 0
+            self._continuous_v2_command = (
+                self.CMD2_ROTATE_SPEED,
+                1.0 if turn_left else 0.0,
+                abs(float(angular_speed_dps)),
+            )
             self.continuous_command_active.set()
         elif ok:
             self.continuous_command_active.clear()
+            self._continuous_v2_command = None
         return ok
 
     def move_with_angle_distance(self, angle_deg: float, distance_m: float, timeout: float = 10.0) -> bool:
@@ -824,6 +848,7 @@ class CarController:
             return False
 
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         legacy_cmd = self.CMD_MOVE_FORWARD if distance_m > 0 else self.CMD_MOVE_BACKWARD
         self._prepare_blocking_command(legacy_cmd)
         if not self._send_command_v2(self.CMD2_MOVE_POLAR_DISTANCE, angle_deg, distance_m):
@@ -852,6 +877,7 @@ class CarController:
             return False
 
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         # STM32 枚举方向与当前实车安装方向相反：
         # 左转发送 RIGHT，右转发送 LEFT，保持已经实车确认的方向。
         legacy_cmd = self.CMD_ROTATE_CW if turn_left else self.CMD_ROTATE_CCW
@@ -890,12 +916,14 @@ class CarController:
     def stop(self):
         """Send stop command when serial is alive."""
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         if self._serial_is_open():
             self._send_command(self.CMD_STOP)
 
     def stop_v2(self):
         """Send V2 stop command when serial is alive."""
         self.continuous_command_active.clear()
+        self._continuous_v2_command = None
         if self._serial_is_open():
             self._send_command_v2(self.CMD2_STOP)
 
