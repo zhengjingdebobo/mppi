@@ -33,7 +33,8 @@ typedef enum
     CHASSIS_VELOCITY_EXIT_WHEEL_OFFLINE,
     CHASSIS_VELOCITY_EXIT_IMU_OFFLINE,
     CHASSIS_VELOCITY_EXIT_ESTIMATOR_INVALID,
-    CHASSIS_VELOCITY_EXIT_COMMAND_TIMEOUT
+    CHASSIS_VELOCITY_EXIT_COMMAND_TIMEOUT,
+    CHASSIS_VELOCITY_EXIT_RPM_COMPENSATION_FAULT
 } ChassisVelocityExitReason_e;
 
 /* Keil Watch 和后续遥测共用的新速度链调试快照。 */
@@ -64,6 +65,10 @@ typedef struct
     uint8_t wheel_online;
     uint8_t imu_online;
     uint8_t control_valid;
+    /* bit0/1/2/3 分别表示 LF/RF/LB/RB 最近一次补偿故障。 */
+    uint8_t rpm_compensation_fault_mask;
+    /* 四轮状态顺序 LF/RF/LB/RB，状态值见 RPMMotorState_e。 */
+    uint8_t rpm_compensation_state[4];
 } ChassisVelocityDebug_t;
 
 extern ChassisVelocityDebug_t g_chassis_velocity_debug;

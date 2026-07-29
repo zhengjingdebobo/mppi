@@ -10,6 +10,7 @@
 #include "drv_dwt.h"
 #include "mecanum_kinematics.h"
 #include "chassis_control.h"
+#include "chassis_rpm_calibration.h"
 #include <stdbool.h>  
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD 0.0174532925f
@@ -1068,11 +1069,20 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
 // ===============================ChassisTask====================================
 void ChassisTask()
 {
+#if !CHASSIS_RPM_CALIBRATION_MODE
     ChassisControlResult_e control_result;
+#endif
 
     // 先刷新位姿，再做控制解算，避免本周期使用过期状态
     App_TaskLoop();
 
+#if CHASSIS_RPM_CALIBRATION_MODE
+    /*
+     * 专用 RPM 标定固件：只允许标定模块写四轮目标。
+     * MotorControlTask 继续以 200 Hz 将目标发送到 VESC。
+     */
+    ChassisRPMCalibration_Update();
+#else
     /*
      * 唯一底盘任务中的统一仲裁：
      * STOP     - 遥控器离线或新链故障，四轮目标清零；
@@ -1089,6 +1099,7 @@ void ChassisTask()
         OmniCalculate();
         LimitChassisOutput();
     }
+#endif
     
     // 上位机回传和控制解算解耦，避免串口发送阻塞主控制路径
     uint32_t now_tick = xTaskGetTickCount();

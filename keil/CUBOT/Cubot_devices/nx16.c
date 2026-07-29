@@ -12,6 +12,7 @@
 #include "vesc_motor.h"
 #include "chassis_control.h"
 #include "chassis_velocity.h"
+#include "chassis_rpm_calibration.h"
 
 #define NX16_CRITICAL_ENTER()  taskENTER_CRITICAL()
 #define NX16_CRITICAL_EXIT()   taskEXIT_CRITICAL()
@@ -1029,6 +1030,12 @@ void SendIMUDataToAgent(UART_HandleTypeDef* UART_X)
 static void Nx16BufferRxCallback(void)
 {
     nx16_ctrl.rx_callback_count++;
+    if (ChassisRPMCalibration_TryParse(
+            nx16_usart_instance->recv_buff,
+            nx16_usart_instance->recv_buff_size))
+    {
+        return;
+    }
     ParseAgentCommandAuto(nx16_usart_instance->recv_buff);
 }
 
@@ -1038,6 +1045,10 @@ BrainCore_t *Nx16ControlInit(UART_HandleTypeDef *nx16_usart_handle)
     USART_Init_Config_s conf;
     conf.module_callback = Nx16BufferRxCallback;
     conf.usart_handle = nx16_usart_handle;
+    /*
+     * 保持 16 字节 DMA 接收长度，避免正常模式下多个 V2 帧被合并。
+     * 标定文本协议由 ChassisRPMCalibration_TryParse 跨回调拼接。
+     */
     conf.recv_buff_size = AGENT_RX_FRAME_LENGTH_MAX;
     nx16_usart_instance = USARTRegister(&conf); // 启动串口服务
 

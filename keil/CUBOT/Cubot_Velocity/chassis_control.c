@@ -70,6 +70,7 @@ static void ChassisControl_UpdateRemoteDebug(void)
 static void ChassisControl_StopNewChain(void)
 {
     ChassisVelocity_Stop();
+    RPM_CompensationReset();
 }
 
 void ChassisControl_Init(void)
@@ -87,13 +88,62 @@ void ChassisControl_Init(void)
     mecanum.motor_pole_pairs = MECANUM_MOTOR_POLE_PAIRS;
     mecanum.inv_sqrt2 = MECANUM_INV_SQRT2;
     mecanum.yaw_command_sign = MECANUM_YAW_COMMAND_SIGN;
+    mecanum.yaw_erpm_scale = MECANUM_YAW_ERPM_SCALE;
 
     memset(&rpm, 0, sizeof(rpm));
-    rpm.deadzone_lf = RPM_COMPENSATION_DEADZONE_LF;
-    rpm.deadzone_rf = RPM_COMPENSATION_DEADZONE_RF;
-    rpm.deadzone_lb = RPM_COMPENSATION_DEADZONE_LB;
-    rpm.deadzone_rb = RPM_COMPENSATION_DEADZONE_RB;
-    rpm.start_ratio = RPM_COMPENSATION_START_RATIO;
+    rpm.start_rpm.lf_rpm = RPM_COMP_START_RPM_LF;
+    rpm.start_rpm.rf_rpm = RPM_COMP_START_RPM_RF;
+    rpm.start_rpm.lb_rpm = RPM_COMP_START_RPM_LB;
+    rpm.start_rpm.rb_rpm = RPM_COMP_START_RPM_RB;
+
+    rpm.run_command_min_rpm.lf_rpm =
+        RPM_COMP_RUN_CMD_MIN_RPM_LF;
+    rpm.run_command_min_rpm.rf_rpm =
+        RPM_COMP_RUN_CMD_MIN_RPM_RF;
+    rpm.run_command_min_rpm.lb_rpm =
+        RPM_COMP_RUN_CMD_MIN_RPM_LB;
+    rpm.run_command_min_rpm.rb_rpm =
+        RPM_COMP_RUN_CMD_MIN_RPM_RB;
+
+    rpm.run_actual_min_rpm.lf_rpm =
+        RPM_COMP_RUN_ACTUAL_MIN_RPM_LF;
+    rpm.run_actual_min_rpm.rf_rpm =
+        RPM_COMP_RUN_ACTUAL_MIN_RPM_RF;
+    rpm.run_actual_min_rpm.lb_rpm =
+        RPM_COMP_RUN_ACTUAL_MIN_RPM_LB;
+    rpm.run_actual_min_rpm.rb_rpm =
+        RPM_COMP_RUN_ACTUAL_MIN_RPM_RB;
+
+    rpm.linear_end_rpm.lf_rpm = RPM_COMP_LINEAR_END_RPM_LF;
+    rpm.linear_end_rpm.rf_rpm = RPM_COMP_LINEAR_END_RPM_RF;
+    rpm.linear_end_rpm.lb_rpm = RPM_COMP_LINEAR_END_RPM_LB;
+    rpm.linear_end_rpm.rb_rpm = RPM_COMP_LINEAR_END_RPM_RB;
+
+    rpm.wheel_gain.lf_rpm = RPM_COMP_LINEAR_GAIN_LF;
+    rpm.wheel_gain.rf_rpm = RPM_COMP_LINEAR_GAIN_RF;
+    rpm.wheel_gain.lb_rpm = RPM_COMP_LINEAR_GAIN_LB;
+    rpm.wheel_gain.rb_rpm = RPM_COMP_LINEAR_GAIN_RB;
+
+    rpm.start_feedback_threshold_rpm =
+        RPM_COMP_START_FDB_THRESHOLD_RPM;
+    rpm.stall_feedback_threshold_rpm =
+        RPM_COMP_STALL_FDB_THRESHOLD_RPM;
+    rpm.stop_feedback_threshold_rpm =
+        RPM_COMP_STOP_FDB_THRESHOLD_RPM;
+    rpm.reverse_release_rpm =
+        RPM_COMP_REVERSE_RELEASE_RPM;
+    rpm.stop_epsilon_rpm =
+        RPM_COMP_STOP_EPSILON_RPM;
+    rpm.max_output_rpm = RPM_COMP_MAX_OUTPUT_RPM;
+    rpm.control_period_ms = CHASSIS_VELOCITY_CONTROL_PERIOD_MS;
+    rpm.start_boost_min_ms = RPM_COMP_START_BOOST_MIN_MS;
+    rpm.start_confirm_ms = RPM_COMP_START_CONFIRM_MS;
+    rpm.start_timeout_ms = RPM_COMP_START_TIMEOUT_MS;
+    rpm.stall_confirm_ms = RPM_COMP_STALL_CONFIRM_MS;
+    rpm.stop_confirm_ms = RPM_COMP_STOP_CONFIRM_MS;
+    rpm.coast_hold_ms = RPM_COMP_COAST_HOLD_MS;
+    rpm.reverse_timeout_ms = RPM_COMP_REVERSE_TIMEOUT_MS;
+    rpm.restart_max_count = RPM_COMP_RESTART_MAX_COUNT;
 
     estimator.gyro_weight = STATE_ESTIMATOR_GYRO_WEIGHT;
     estimator.min_dt_s = STATE_ESTIMATOR_MIN_DT_S;
@@ -169,6 +219,7 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
     WheelVelocity_t wheel_velocity;
     IMUState_t imu;
     ChassisVelocity_t control_velocity;
+    uint8_t rpm_compensation_valid;
 
     g_chassis_velocity_debug.control_valid = 0u;
     (void)ChassisVelocity_GetTarget(&g_chassis_velocity_debug.cmd_target);
@@ -218,7 +269,27 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
                                control_velocity.vy_mps,
                                control_velocity.wz_radps,
                                &wheel_target);
-    RPM_CompensateFour(&wheel_target, &wheel_compensated);
+    rpm_compensation_valid =
+        RPM_CompensateFour(&wheel_target,
+                           &wheel_feedback,
+                           &wheel_compensated);
+    g_chassis_velocity_debug.rpm_compensation_state[0] =
+        (uint8_t)RPM_CompensationGetWheelState(0u);
+    g_chassis_velocity_debug.rpm_compensation_state[1] =
+        (uint8_t)RPM_CompensationGetWheelState(1u);
+    g_chassis_velocity_debug.rpm_compensation_state[2] =
+        (uint8_t)RPM_CompensationGetWheelState(2u);
+    g_chassis_velocity_debug.rpm_compensation_state[3] =
+        (uint8_t)RPM_CompensationGetWheelState(3u);
+
+    if (!rpm_compensation_valid)
+    {
+        g_chassis_velocity_debug.rpm_compensation_fault_mask =
+            RPM_CompensationGetLastFaultMask();
+        return CHASSIS_VELOCITY_EXIT_RPM_COMPENSATION_FAULT;
+    }
+    g_chassis_velocity_debug.rpm_compensation_fault_mask =
+        RPM_CompensationGetLastFaultMask();
     g_chassis_velocity_debug.target_rpm = wheel_target;
     g_chassis_velocity_debug.compensated_rpm = wheel_compensated;
 

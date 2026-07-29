@@ -1,6 +1,7 @@
 #include "hardware_config.h"
 #include "vesc_motor.h"
 #include "chassis_control.h"
+#include "chassis_rpm_calibration.h"
 
 
 
@@ -47,6 +48,7 @@ void RobotInit()
     /* hwt101ct_data = HWT101CTInit(&huart1); */
     RemoteControlInit(&huart3);//把 USART3 注册成遥控器接收串口
     Nx16ControlInit(&AGENT_UART_HANDLE);//用 USART1 初始化上位机通信模块
+    ChassisRPMCalibration_Init();
     
     // 底盘初始化里会同时建好 VESC 输出链路和里程计兼容结构。
     ChassisInit();

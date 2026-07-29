@@ -18,6 +18,7 @@ static uint8_t MecanumKinematics_ParamValid(const MecanumParam_t *param)
     if (param->motor_pole_pairs <= 0.0f) return 0u;
     if (param->inv_sqrt2 <= 0.0f) return 0u;
     if (param->yaw_command_sign == 0.0f) return 0u;
+    if (param->yaw_erpm_scale <= 0.0f) return 0u;
     return 1u;
 }
 
@@ -86,7 +87,8 @@ void MecanumKinematics_Inverse(float vx_mps,
     forward_raw = -vy_mps / mps_per_erpm;
     right_raw = vx_mps / mps_per_erpm;
     yaw_raw = mecanum_param.yaw_command_sign *
-              rotation_radius_m * wz_radps / mps_per_erpm;
+              rotation_radius_m * wz_radps / mps_per_erpm *
+              mecanum_param.yaw_erpm_scale;
 
     MecanumKinematics_LegacyMix(forward_raw,
                                 right_raw,
@@ -129,5 +131,6 @@ void MecanumKinematics_Forward(const MecanumWheelRPM_t *wheel_rpm,
     wheel_velocity->vy_wheel = -forward_raw * mps_per_erpm;
     wheel_velocity->wz_wheel =
         mecanum_param.yaw_command_sign *
-        yaw_raw * mps_per_erpm / rotation_radius_m;
+        yaw_raw * mps_per_erpm /
+        (rotation_radius_m * mecanum_param.yaw_erpm_scale);
 }

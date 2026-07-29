@@ -218,6 +218,172 @@ def _snapshot_rotate(car: CarController, started_at: float, target_yaw: float) -
     }
 
 
+def _snapshot_rotate_speed(
+    car: CarController,
+    started_at: float,
+    start_yaw_deg: float,
+    target_dps: float,
+    rotate_left: bool,
+) -> dict:
+    """读取持续旋转的 IMU 与 VESC 反馈；不使用旧控制链的 cmd/ref 字段。"""
+    with car.lock:
+        imu = dict(car.last_imu)
+        vesc = dict(car.vesc_feedback)
+
+    yaw_total_deg = float(imu.get("yaw_total_deg", 0.0))
+    return {
+        "pc_elapsed_s": time.monotonic() - started_at,
+        "stm32_us": int(imu.get("stm32_us", 0)),
+        "direction": "left" if rotate_left else "right",
+        "target_speed_dps": target_dps,
+        "start_yaw_deg": start_yaw_deg,
+        "yaw_total_deg": yaw_total_deg,
+        "yaw_delta_deg": yaw_total_deg - start_yaw_deg,
+        # 该字段是固件当前直接上传的 HWT9053 原始 Z 轴符号。
+        "gyro_z_raw_dps": float(imu.get("gyro_z_dps", 0.0)),
+        "lf_erpm": int(vesc.get("lf_erpm", 0)),
+        "rf_erpm": int(vesc.get("rf_erpm", 0)),
+        "lb_erpm": int(vesc.get("lb_erpm", 0)),
+        "rb_erpm": int(vesc.get("rb_erpm", 0)),
+        "lf_online": int(vesc.get("lf_online", 0)),
+        "rf_online": int(vesc.get("rf_online", 0)),
+        "lb_online": int(vesc.get("lb_online", 0)),
+        "rb_online": int(vesc.get("rb_online", 0)),
+        "imu_online": int(imu.get("online", 0)),
+        "imu_gyro_count": int(imu.get("gyro_count", 0)),
+        "imu_yaw_count": int(imu.get("yaw_count", 0)),
+    }
+
+
+def run_rotate_speed_with_log(car: CarController, args, rotate_left: bool) -> bool:
+    """持续发送定角速度命令，并输出运动期间的 IMU/VESC 时间序列和稳态统计。"""
+    with car.lock:
+        start_yaw_deg = float(car.last_imu.get("yaw_total_deg", 0.0))
+
+    direction = "left" if rotate_left else "right"
+    target_dps = abs(float(args.rotate_speed_dps))
+    duration = max(0.2, float(args.rotate_speed_duration))
+    period = 1.0 / max(1.0, min(args.log_rate, 200.0))
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = None
+    rows = []
+
+    if args.save_log:
+        log_path = Path(
+            args.log_file
+            or f"rotate_speed_debug_{direction}_{target_dps:g}dps_{stamp}.csv"
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    ok = car.rotate_with_speed(rotate_left, target_dps)
+    if not ok:
+        return False
+
+    print("  ✓ 定角速度命令下发")
+    print("  注：以下 ERPM 是 VESC 实际反馈；旧 cmd_vel/ref 遥测不代表新速度链。")
+    started_at = time.monotonic()
+    next_sample = started_at
+    next_print = started_at
+
+    try:
+        while True:
+            now = time.monotonic()
+            if now >= started_at + duration:
+                break
+
+            row = _snapshot_rotate_speed(
+                car,
+                started_at,
+                start_yaw_deg,
+                target_dps,
+                rotate_left,
+            )
+            rows.append(row)
+            if now >= next_print:
+                print(
+                    f"  t={row['pc_elapsed_s']:5.2f}s "
+                    f"yaw_delta={row['yaw_delta_deg']:+7.2f}° "
+                    f"gyro_raw={row['gyro_z_raw_dps']:+7.2f}°/s "
+                    f"erpm=({row['lf_erpm']:+5d},{row['rf_erpm']:+5d},"
+                    f"{row['lb_erpm']:+5d},{row['rb_erpm']:+5d})"
+                )
+                next_print = now + 0.10
+
+            next_sample += period
+            time.sleep(max(0.0, next_sample - time.monotonic()))
+    finally:
+        car.stop_v2()
+
+    rows.append(
+        _snapshot_rotate_speed(
+            car,
+            started_at,
+            start_yaw_deg,
+            target_dps,
+            rotate_left,
+        )
+    )
+
+    if args.save_log:
+        with log_path.open("w", newline="", encoding="utf-8-sig") as fp:
+            writer = csv.DictWriter(fp, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  CSV 日志: {log_path.resolve()}")
+
+    # 去除启动、停止区间，并按 IMU 时间戳去重，避免串口刷新间隔重复计权。
+    steady_start_s = max(0.40, duration * 0.25)
+    steady_end_s = max(steady_start_s, duration - 0.15)
+    steady_rows = [
+        row
+        for row in rows
+        if steady_start_s <= row["pc_elapsed_s"] <= steady_end_s
+    ]
+    unique_rows = []
+    seen_imu_timestamps = set()
+    for row in steady_rows:
+        timestamp = row["stm32_us"]
+        if timestamp != 0 and timestamp in seen_imu_timestamps:
+            continue
+        if timestamp != 0:
+            seen_imu_timestamps.add(timestamp)
+        unique_rows.append(row)
+    if not unique_rows:
+        unique_rows = steady_rows or rows
+
+    avg_gyro_raw = sum(row["gyro_z_raw_dps"] for row in unique_rows) / len(unique_rows)
+    peak_gyro = max(abs(row["gyro_z_raw_dps"]) for row in rows)
+    measured_magnitude = abs(avg_gyro_raw)
+    speed_error_pct = (
+        (measured_magnitude / target_dps - 1.0) * 100.0
+        if target_dps > 1.0e-6
+        else 0.0
+    )
+    avg_erpm = {
+        wheel: sum(row[wheel] for row in unique_rows) / len(unique_rows)
+        for wheel in ("lf_erpm", "rf_erpm", "lb_erpm", "rb_erpm")
+    }
+    final = rows[-1]
+    print(
+        f"  稳态汇总[{steady_start_s:.2f},{steady_end_s:.2f}]s: "
+        f"target={target_dps:.2f}°/s "
+        f"avg_gyro_raw={avg_gyro_raw:+.2f}°/s "
+        f"|speed_error|={speed_error_pct:+.1f}% "
+        f"peak|gyro|={peak_gyro:.2f}°/s"
+    )
+    print(
+        f"  平均 VESC ERPM: LF={avg_erpm['lf_erpm']:+.0f} "
+        f"RF={avg_erpm['rf_erpm']:+.0f} "
+        f"LB={avg_erpm['lb_erpm']:+.0f} "
+        f"RB={avg_erpm['rb_erpm']:+.0f}"
+    )
+    print(
+        f"  总角度: yaw_delta={final['yaw_delta_deg']:+.2f}° "
+        f"采样={len(rows)} 稳态有效样本={len(unique_rows)}"
+    )
+    return True
+
+
 def run_rotate_with_log(car: CarController, args, rotate_left: bool) -> bool:
     """执行阻塞式旋转命令，同时记录闭环时间序列 CSV。"""
     _, initial_yaw = car.get_odom_state()
@@ -582,15 +748,10 @@ def main() -> int:
             direction_text = "左转" if rotate_left else "右转"
             print(f"\n── 定角速度旋转: {direction_text} {args.rotate_speed_dps:.1f} deg/s  "
                   f"持续 {args.rotate_speed_duration:.1f}s ──")
-            _require_ok(
-                car.rotate_with_speed(rotate_left, args.rotate_speed_dps),
-                "定角速度命令下发",
-            )
-            time.sleep(0.20)
-            print_state(car, "旋转中", verbose)
-            time.sleep(max(0.0, args.rotate_speed_duration - 0.20))
+            ok = run_rotate_speed_with_log(car, args, rotate_left)
+            if not ok:
+                raise RuntimeError("定角速度命令下发失败")
             print(f"cmd_vel 周期重发次数: {car.continuous_refresh_tx_count}")
-            car.stop_v2()
             time.sleep(args.settle)
             print_state(car, "定角速度测试后", verbose)
 

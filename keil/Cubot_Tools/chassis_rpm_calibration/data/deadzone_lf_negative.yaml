@@ -1,0 +1,12 @@
+# chassis_rpm_calibration 自动生成
+actual_threshold_rpm: 50
+min_valid_ratio: 0.6
+deadzone:
+  lf:
+    detected: false
+  rf:
+    detected: false
+  rb:
+    detected: false
+  lb:
+    detected: false

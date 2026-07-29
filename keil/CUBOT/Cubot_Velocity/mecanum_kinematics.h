@@ -13,6 +13,7 @@ typedef struct
     float motor_pole_pairs;
     float inv_sqrt2;
     float yaw_command_sign;
+    float yaw_erpm_scale;
 } MecanumParam_t;
 
 /* 四轮顺序固定为 LF、RF、LB、RB；当前 rpm 字段单位沿用逻辑 ERPM。 */

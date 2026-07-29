@@ -1,0 +1,32 @@
+# chassis_rpm_calibration 自动生成
+actual_threshold_rpm: 50
+min_valid_ratio: 0.6
+deadzone:
+  lf:
+    detected: true
+    target_rpm: 900
+    magnitude_rpm: 900
+    mean_actual_rpm: 491.5
+    valid_ratio: 0.875
+    sample_count: 8
+  rf:
+    detected: true
+    target_rpm: 900
+    magnitude_rpm: 900
+    mean_actual_rpm: -504.75
+    valid_ratio: 0.875
+    sample_count: 8
+  rb:
+    detected: true
+    target_rpm: 900
+    magnitude_rpm: 900
+    mean_actual_rpm: 411.875
+    valid_ratio: 0.875
+    sample_count: 8
+  lb:
+    detected: true
+    target_rpm: 900
+    magnitude_rpm: 900
+    mean_actual_rpm: -376.375
+    valid_ratio: 0.875
+    sample_count: 8

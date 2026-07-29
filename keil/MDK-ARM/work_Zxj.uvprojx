@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx,ARM_MATH_CM4</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Middlewares/ST/ARM/DSP/Inc;../CUBOT/Cubot_algorithm;../CUBOT/Cubot_devices;../CUBOT/Cubot_driver;../CUBOT/Cubot_modules;../CUBOT/Cubot_UI;../CUBOT/Cubot_User_Config;../CUBOT/Cubot_vision;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../CUBOT/Cubot_devices_IMU;../CUBOT/Cubot_devices_daemon;../CUBOT/Cubot_devices_Motor;../CUBOT/Cubot_Velocity;../CUBOT\Cubot_devices;..\Cubot\Algorithm;..\MDK-ARM;..\CUBOT\Cubot_algorithm</IncludePath>
+              <IncludePath>../Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Middlewares/ST/ARM/DSP/Inc;../CUBOT/Cubot_algorithm;../CUBOT/Cubot_devices;../CUBOT/Cubot_driver;../CUBOT/Cubot_modules;../CUBOT/Cubot_UI;../CUBOT/Cubot_User_Config;../CUBOT/Cubot_vision;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../CUBOT/Cubot_devices_IMU;../CUBOT/Cubot_devices_daemon;../CUBOT/Cubot_devices_Motor;../CUBOT/Cubot_Velocity;../CUBOT/Cubot_Calibration;../CUBOT\Cubot_devices;..\Cubot\Algorithm;..\MDK-ARM;..\CUBOT\Cubot_algorithm</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1950,6 +1950,21 @@
               <FileName>slip_detector.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\CUBOT\Cubot_Velocity\slip_detector.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Cubot/Calibration</GroupName>
+          <Files>
+            <File>
+              <FileName>chassis_rpm_calibration.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\CUBOT\Cubot_Calibration\chassis_rpm_calibration.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_rpm_calibration.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\CUBOT\Cubot_Calibration\chassis_rpm_calibration.h</FilePath>
             </File>
           </Files>
         </Group>

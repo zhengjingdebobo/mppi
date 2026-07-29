@@ -95,6 +95,7 @@
 "work_zxj\imu_state.o"
 "work_zxj\state_estimator.o"
 "work_zxj\slip_detector.o"
+"work_zxj\chassis_rpm_calibration.o"
 "work_zxj\get_angle.o"
 "work_zxj\kalman.o"
 "work_zxj\pid.o"
