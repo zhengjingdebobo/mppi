@@ -14,10 +14,20 @@
 #define CHASSIS_VELOCITY_CONTROL_PERIOD_MS          5u
 #define CHASSIS_VELOCITY_COMMAND_TIMEOUT_MS     500u
 
-/* 新速度入口的最高前后速度；降低可限制重载时的最高行驶速度。 */
-#define CHASSIS_VELOCITY_MAX_VX_MPS             0.22f
-/* 新速度入口的最高横移速度；重载横移打滑时优先降低该值。 */
-#define CHASSIS_VELOCITY_MAX_VY_MPS             0.08f
+/*
+ * 新串口速度链的最大平移合速度，单位 m/s。
+ *
+ * 前进、后退、横移和任意斜向共用同一个上限；控制器按 vx/vy 矢量模长
+ * 等比例缩放，因此达到上限时不会改变用户指定的运动角度。
+ *
+ * 增大：可以提高所有方向的最高速度，但需要同步确认单轮 ERPM 上限、
+ *       VESC 电流、电机温度、麦轮打滑和制动距离。
+ * 减小：可以统一降低所有方向的最高速度，不需要分别调整前后和横移参数。
+ *
+ * 当前 0.50 m/s 在最不利的 45° 方向补偿后约需 12080 ERPM，
+ * 与下方 13000 ERPM 单轮保护上限配套使用。
+ */
+#define CHASSIS_VELOCITY_MAX_TRANSLATION_MPS    0.50f
 /* 新速度入口的最高旋转速度；重载旋转不稳时降低该值。 */
 #define CHASSIS_VELOCITY_MAX_WZ_RADPS           0.60f
 /*
@@ -202,10 +212,14 @@
 
 /*
  * 补偿输出绝对上限：
- * 用于拦截异常参数或增益导致的过大指令。当前 6000 RPM 为正常
- * 速度上限预留余量；降低该值会同时限制底盘最高平移和旋转速度。
+ * 用于拦截异常参数或增益导致的过大指令，不能删除该安全保护。
+ * 当前 13000 ERPM 可覆盖任意方向 0.50 m/s：最不利 45° 方向的
+ * 补偿需求约为 12080 ERPM，并保留约 7.6% 余量。
+ *
+ * 如果以后增大 CHASSIS_VELOCITY_MAX_TRANSLATION_MPS，必须重新计算最不利
+ * 方向的单轮需求，并通过电流、温升、打滑和制动测试后再提高本值。
  */
-#define RPM_COMP_MAX_OUTPUT_RPM                      6000.0f
+#define RPM_COMP_MAX_OUTPUT_RPM                      13000.0f
 
 /* 互补状态估计参数。 */
 #define STATE_ESTIMATOR_GYRO_WEIGHT             0.80f

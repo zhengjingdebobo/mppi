@@ -110,6 +110,7 @@ uint8_t ChassisVelocity_Update(const struct RobotState *state,
     float delta_v;
     float output_v;
     float target_v;
+    float translation_scale;
     float max_step;
     float delta_wz;
     float max_wz_step;
@@ -120,14 +121,22 @@ uint8_t ChassisVelocity_Update(const struct RobotState *state,
     /* 第一版暂不使用反馈闭环，仅保留函数入口。 */
     (void)state;
 
-    target.vx_mps = ChassisVelocity_Clamp(
-        target.vx_mps,
-        -CHASSIS_VELOCITY_MAX_VX_MPS,
-        CHASSIS_VELOCITY_MAX_VX_MPS);
-    target.vy_mps = ChassisVelocity_Clamp(
-        target.vy_mps,
-        -CHASSIS_VELOCITY_MAX_VY_MPS,
-        CHASSIS_VELOCITY_MAX_VY_MPS);
+    /*
+     * 所有平移方向共用同一个合速度上限。
+     * vx、vy 必须按相同比例缩放，不能分别钳位，否则斜向超速时会改变方向。
+     */
+    target_v = sqrtf(target.vx_mps * target.vx_mps +
+                     target.vy_mps * target.vy_mps);
+    if (target_v > CHASSIS_VELOCITY_MAX_TRANSLATION_MPS &&
+        target_v > 1.0e-6f)
+    {
+        translation_scale =
+            CHASSIS_VELOCITY_MAX_TRANSLATION_MPS / target_v;
+        target.vx_mps *= translation_scale;
+        target.vy_mps *= translation_scale;
+        target_v = CHASSIS_VELOCITY_MAX_TRANSLATION_MPS;
+    }
+
     target.wz_radps = ChassisVelocity_Clamp(
         target.wz_radps,
         -CHASSIS_VELOCITY_MAX_WZ_RADPS,
@@ -138,8 +147,6 @@ uint8_t ChassisVelocity_Update(const struct RobotState *state,
     delta_v = sqrtf(delta_vx * delta_vx + delta_vy * delta_vy);
     output_v = sqrtf(velocity_output.vx_mps * velocity_output.vx_mps +
                      velocity_output.vy_mps * velocity_output.vy_mps);
-    target_v = sqrtf(target.vx_mps * target.vx_mps +
-                     target.vy_mps * target.vy_mps);
     max_step = ((target_v < output_v) ?
                 CHASSIS_VELOCITY_MAX_DECEL_MPS2 :
                 CHASSIS_VELOCITY_MAX_ACCEL_MPS2) * dt_s;

@@ -1,8 +1,476 @@
 # STM32 VESC 底盘工程交接摘要
 
-更新时间：2026-07-28
+更新时间：2026-07-29
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
+
+## 2026-07-29 当前权威状态（下次从这里继续）
+
+> 本节记录 2026-07-29 完成的 VESC 死区标定、分段补偿和电机启动状态机。
+> 若后文关于 RPM 死区、旋转方向、串口波特率或下一步计划的旧记录与本节冲突，
+> 一律以本节和当前源码为准。用户已经手动编译、烧录并完成基础平移实车测试；
+> 本次没有保存完整 Keil 构建日志，也没有记录 Keil Watch 中的逐轮状态转换，
+> 因此“能够起转和行驶”已验证，但完整状态机保护仍需后续专项验证。
+
+### 一句话续接状态
+
+```text
+四轮绝对 ERPM 标定已完成第一轮，800 不转、900 可勉强起转、1000 可可靠起转；
+新速度链已加入分段死区补偿和四轮独立启动状态机，用 1000 ERPM 突破静摩擦，
+用户已经完成前后左右实车测试，方向均正确且车辆能够走直。当前连续最低稳定
+车速约为 0.052～0.055 m/s；0.06 m/s 档误差约 -4.8%。下一次先补齐稳定运行期
+四轮 RPM 遥测，再验证状态转换、线性速度档和定角速度旋转。
+```
+
+### 本轮已经完成的内容
+
+1. 创建独立 PC 标定工具：
+
+```text
+keil/Cubot_Tools/chassis_rpm_calibration/
+├── rpm_calibration.py
+├── protocol.py
+├── plot_result.py
+├── README.md
+└── data/
+```
+
+工具通过串口文本命令控制 STM32，支持：
+
+```text
+CALIBRATION_START
+SET_RPM lf rf rb lb
+STOP
+CALIBRATION_STOP
+```
+
+Python 可以自动扫描 RPM、保存四轮目标/实际 RPM/电流 CSV、绘制曲线并计算
+各轮死区。四轮同时检测时，命令中的轮序为 `LF RF RB LB`，与
+`VESCMotorSetFourRPM(lf, rf, rb, lb)` 保持一致。
+
+2. 创建独立固件标定模式：
+
+```text
+keil/CUBOT/Cubot_Calibration/chassis_rpm_calibration.h
+keil/CUBOT/Cubot_Calibration/chassis_rpm_calibration.c
+```
+
+编译宏：
+
+```c
+#define CHASSIS_RPM_CALIBRATION_MODE 0u
+```
+
+- `1u`：进入标定固件路径，文本命令可直接调用
+  `VESCMotorSetFourRPM(lf, rf, rb, lb)`，绕过底盘 PID 和麦轮运动学。
+- `0u`：正常底盘任务运行。
+- 当前已经恢复为 `0u`，后续验证分段补偿和定速度任务时必须保持 `0u`。
+
+3. 根据标定 CSV 实现四轮绝对值分段补偿：
+
+```text
+keil/Cubot_Tools/chassis_rpm_calibration/data/rpm_test_20260729_115739.csv
+```
+
+当前数据结论只看 RPM 绝对值，不区分正反方向：
+
+```text
+目标 800 ERPM：四轮不转
+目标 900 ERPM：可以缓慢或不稳定起转，稳定后实际约 600 ERPM
+目标 1000 ERPM：四轮能够可靠起转
+目标大于 1000 ERPM：整体接近线性，四轮斜率存在小差异
+```
+
+当前运行分段为：
+
+```text
+目标绝对值 <= 1：
+    输出 0
+
+电机从静止第一次启动：
+    固定输出该轮 START_RPM（当前四轮均为 1000）
+
+电机已进入运行态，目标 <= 600：
+    输出 RUN_CMD_MIN（当前四轮均为 900）
+
+目标位于 600～1000：
+    将目标实际 RPM 线性反向映射到 900～1000 指令
+
+目标 >= 1000：
+    从 1000 连续接入各轮线性增益，不在连接点产生跳变
+```
+
+四轮高转速线性区当前增益：
+
+```text
+LF = 1.004
+RF = 0.999
+LB = 1.024
+RB = 1.015
+```
+
+### 电机启动状态机
+
+状态机位于：
+
+```text
+keil/CUBOT/Cubot_Velocity/rpm_compensation.h
+keil/CUBOT/Cubot_Velocity/rpm_compensation.c
+```
+
+四轮各自维护状态，状态编号为：
+
+```text
+0 RPM_MOTOR_STOPPED       完全停止
+1 RPM_MOTOR_START_BOOST   启动增强
+2 RPM_MOTOR_RUNNING       正常运行
+3 RPM_MOTOR_COASTING      零输出滑行
+4 RPM_MOTOR_REVERSING     等待换向
+5 RPM_MOTOR_FAULT         故障锁存并停车
+```
+
+核心行为：
+
+- `STOPPED -> START_BOOST`：第一次收到非零目标，输出该轮可靠起转 RPM。
+- `START_BOOST -> RUNNING`：至少保持最短增强时间，并且反馈连续超过起转阈值，
+  才切换为正常分段输出。
+- `RUNNING` 中同方向目标发生轻微变化：只重新计算分段输出，保持运行态，
+  不再跳回 `START_BOOST`，这是区分“第一次大力突破”和“轻微修正”的关键。
+- 运行中反馈持续低于堵转阈值：重新执行启动增强；超过允许次数则进入故障。
+- 收到零目标：进入 `COASTING` 并立即输出零。短时间内同方向命令恢复且轮子
+  仍在转，可直接回到 `RUNNING`，避免重复冲击。
+- 方向改变：进入 `REVERSING`，先输出零，等待实际绝对 RPM 降到释放阈值以下，
+  再按新方向进入启动增强，避免直接反拖。
+- 任意一轮故障时，四轮补偿输出全部清零，速度链以
+  `CHASSIS_VELOCITY_EXIT_RPM_COMPENSATION_FAULT` 退出。
+
+故障位图：
+
+```text
+bit0 = LF
+bit1 = RF
+bit2 = LB
+bit3 = RB
+```
+
+### 当前状态机与载荷参数
+
+全部集中在：
+
+```text
+keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
+```
+
+当前值：
+
+```text
+控制周期                         5 ms
+
+四轮可靠起转指令                 1000 ERPM
+四轮最低运行指令                  900 ERPM
+四轮最低稳定实际转速              600 ERPM
+四轮低速映射终点                 1000 ERPM
+
+起转反馈阈值                      300 ERPM
+启动增强最短保持时间               50 ms
+起转连续确认时间                   25 ms
+单次起转超时                     1500 ms
+
+堵转反馈阈值                      100 ERPM
+堵转连续确认时间                  200 ms
+完全停止反馈阈值                   50 ERPM
+完全停止确认时间                  100 ms
+
+滑行状态保持时间                  300 ms
+换向释放阈值                      100 ERPM
+换向等待超时                     1000 ms
+
+最多连续重新起转次数                 2
+零目标判定阈值                      1 ERPM
+补偿输出绝对上限                13000 ERPM
+```
+
+这些宏旁已经增加中文注释，说明增大或减小每个参数对重载启动、冲击、电流、
+误判堵转和换向安全的影响。底盘增重后优先重新标定并调整该配置区，不要直接
+修改 `rpm_compensation.c` 的状态转换。
+
+### 串口任意方向统一最高速度
+
+2026-07-29 最后一次代码调整取消了新串口速度链原来的分轴上限：
+
+```text
+旧：vx 最大 0.22 m/s，vy 最大 0.08 m/s
+新：sqrt(vx² + vy²) 最大 0.50 m/s
+```
+
+当前集中宏：
+
+```c
+#define CHASSIS_VELOCITY_MAX_TRANSLATION_MPS 0.50f
+#define RPM_COMP_MAX_OUTPUT_RPM              13000.0f
+```
+
+控制器对 `vx/vy` 按矢量模长整体等比例缩放，因此前进、后退、横移和任意斜向
+都使用同一个 `0.50 m/s` 上限，超限时不会改变运动角度。以后调整所有方向的
+串口最高平移速度，只修改 `CHASSIS_VELOCITY_MAX_TRANSLATION_MPS`。
+
+`13000 ERPM` 仍作为不可删除的单轮安全保护：`0.50 m/s` 在最不利的 45° 方向
+运动学目标约为 `11820 ERPM`，经过当前最大单轮增益后约为 `12080 ERPM`，
+`13000 ERPM` 保留约 7.6% 余量。若继续提高速度宏，必须重新计算单轮需求并完成
+电流、温升、打滑和制动距离验证。该调整只影响新串口持续速度链；旧定距离、
+旧定角度、遥控器以及 `0.60 rad/s` 串口旋转上限保持不变。
+
+用户已经手动修改、编译、烧录并完成基础实车测试：
+
+```text
+车辆能够正常运行
+主观感受明显比 0.30 m/s 配置更快
+运行表现平稳
+尚未使用外部距离/时间或稳定段里程数据测量实际最高速度
+```
+
+因此当前只能确认 `0.50 m/s` 是软件命令上限且实车可以平稳运行，不能宣称车辆
+已经准确达到 `0.50 m/s`。下一次应测量正前、横移和 45° 斜向的实际距离/时间，
+同时记录稳定阶段四轮目标、补偿输出、实际 ERPM、电流和温升。当前减速度
+`0.45 m/s²` 下，若实车确实达到 `0.50 m/s`，理论减速距离约为 `0.278 m`，
+落地测试必须预留足够停车空间。
+
+### 2026-07-29 平移实车验证结果
+
+用户已使用正常模式固件完成前、后、左、右实车测试：
+
+```text
+前后左右物理方向均正确
+车辆能够走直
+不需要再修改 vx/vy 定义、四轮轮位映射或电机发送方向
+```
+
+其中正前方 `angle=0°` 的定量测试如下，测试时间均为 `5 s`：
+
+| 命令速度 | 期望距离 | 实测里程 | 实际平均速度 | 相对误差 |
+| --- | ---: | ---: | ---: | ---: |
+| 0.01 m/s | 0.050 m | 0.2583 m | 0.0517 m/s | +416.6% |
+| 0.04 m/s | 0.200 m | 0.2669 m | 0.0534 m/s | +33.5% |
+| 0.06 m/s | 0.300 m | 0.2857 m | 0.0571 m/s | -4.8% |
+
+结论：
+
+- 启动增强已经解决低命令下“不起转”的问题，`0.01 m/s` 也能驱动车辆。
+- `0.01` 和 `0.04 m/s` 都低于当前机械连续稳定速度，被最低运行指令
+  `900 ERPM` 抬升到约 `0.052～0.055 m/s`，因此不能把“能够运动”等同于
+  “能够准确实现该低速”。
+- `0.06 m/s` 已越过最低稳定区，实测误差约 `-4.8%`，可作为下一轮线性区
+  标定的最低基准档。
+- 当前阶段建议把连续定速度的保守最低值视为 `0.06 m/s`。如果必须实现更低
+  平均速度，需要以后单独设计脉冲/间歇驱动；该方式会引入顿挫、方向波动和
+  重复启动，不应与当前连续速度补偿混在一起修改。
+- 日志中 `angle=0°` 的位移主要显示在 `y`，但用户确认实车物理方向正确。
+  因而不能仅凭 STATUS 的 `x/y` 字段判断车体方向；该字段可能使用世界坐标或
+  旧里程计坐标约定。除非后续任务需要统一对外坐标，否则不要因此修改已经
+  实车确认正确的速度运动学。
+
+两次需要保留的航向记录：
+
+```text
+0.04 m/s：odom yaw 约 -0.25°，IMU yaw 约 -65.40°，实车仍然走直
+0.06 m/s：odom yaw 约 -0.59°，IMU yaw 约 -0.82°，实车走直
+```
+
+`0.04 m/s` 的 `IMU yaw=-65.40°` 与实车姿态、轮式 odom 和下一次测试均不一致，
+先按单次 IMU/遥测异常记录，不要据此修改运动学或四轮补偿。如果后续复现，应检查
+INIT 前后 IMU yaw 零点、STATUS/IMU 帧时间对应关系、串口丢帧和 IMU 数据新鲜度。
+
+本次 `--verbose` 的 `[运动中]` 快照采集得太早，四轮 `ref/fdb` 仍为零；测试结束
+快照又已经 STOP，因此没有取得稳定运行阶段的四轮目标和反馈。下一次应先修改或
+使用测试脚本在运动保持阶段周期采样，至少记录：
+
+```text
+target_rpm
+compensated_rpm
+四轮实际 feedback_rpm
+IMU gyro_z
+状态机 state[4]
+fault_mask
+```
+
+### 新速度链的调试观测字段
+
+`g_chassis_velocity_debug` 新增：
+
+```c
+rpm_compensation_state[4]     /* 顺序 LF/RF/LB/RB */
+rpm_compensation_fault_mask
+```
+
+下一次在 Keil Watch 中同时观察：
+
+```text
+g_chassis_velocity_debug.rpm_compensation_state
+g_chassis_velocity_debug.rpm_compensation_fault_mask
+g_chassis_velocity_debug.target_rpm
+g_chassis_velocity_debug.compensated_rpm
+g_chassis_velocity_debug.feedback_rpm
+g_chassis_velocity_debug.last_exit_reason
+```
+
+`last_exit_reason` 新增值：
+
+```text
+8 = CHASSIS_VELOCITY_EXIT_RPM_COMPENSATION_FAULT
+```
+
+### 定角速度旋转的最新结论
+
+此前实测命令 `10 deg/s`、持续 `2 s`：
+
+```text
+左转：实际 odom 约 +35.97°，IMU 约 +40.52°
+右转：实际 odom 约 -34.66°，IMU 约 -31.68°
+```
+
+这说明当时能够起转，但实际角速度约为命令的 1.7～2 倍。已增加旋转 ERPM
+比例：
+
+```c
+#define MECANUM_YAW_ERPM_SCALE 0.563f
+```
+
+该比例只作用于新速度运动学中的旋转项，不改变已经验证正确的平移换算。
+
+随后实车判断进一步明确：
+
+```text
+遥控器六方向正确
+串口定速度平移方向正确
+串口定角度旋转方向正确
+串口定角速度旋转左右方向相反
+```
+
+因此只修正新速度链：
+
+```c
+#define MECANUM_YAW_COMMAND_SIGN (-1.0f)
+```
+
+不要为了修复定角速度方向去修改旧定角度任务、遥控器方向或平移轮速符号。
+平移启动和方向已经完成基础实车验证；定角速度左右方向修正仍需单独复测。
+状态机的逐状态转换、换向等待、堵转重试和故障锁存也尚未通过 Keil Watch 专项验收。
+
+### 本轮主要修改文件
+
+```text
+keil/CUBOT/Cubot_Velocity/rpm_compensation.h
+keil/CUBOT/Cubot_Velocity/rpm_compensation.c
+keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
+keil/CUBOT/Cubot_Velocity/chassis_control.h
+keil/CUBOT/Cubot_Velocity/chassis_control.c
+keil/CUBOT/Cubot_Calibration/chassis_rpm_calibration.h
+keil/CUBOT/Cubot_Calibration/chassis_rpm_calibration.c
+keil/Cubot_Tools/chassis_rpm_calibration/rpm_calibration.py
+keil/Cubot_Tools/chassis_rpm_calibration/protocol.py
+keil/Cubot_Tools/chassis_rpm_calibration/plot_result.py
+keil/Cubot_Tools/chassis_rpm_calibration/README.md
+```
+
+Keil 工程已经包含 RPM 补偿和标定模块。此前构建中出现过两个补偿宏名称不一致
+导致的错误，已经统一为：
+
+```c
+RPM_COMP_START_FDB_THRESHOLD_RPM
+RPM_COMP_STOP_EPSILON_RPM
+```
+
+用户已经手动生成并烧录了可运行固件，随后完成上述平移实车测试；但本次没有保存
+完整 Keil 构建日志。下次重新构建时仍需确认 ARMCC 对新增枚举、结构体、
+`uint32_t` 计时字段以及函数声明保持 `0 errors`。
+
+### 下一次直接从这里继续
+
+1. 确认 `CHASSIS_RPM_CALIBRATION_MODE == 0u`。
+2. 先让 `test_v2_protocol.py` 在运动保持阶段周期打印四轮目标、补偿输出和实际
+   反馈。当前脚本只在刚下发和 STOP 后取快照，无法用于稳态 RPM 标定。
+3. 以 `0.06 / 0.08 / 0.10 m/s` 测试正前方向，记录实际距离和稳态四轮 RPM，
+   先确定线性速度比例，不再用 `0.01 m/s` 判断速度精度。
+4. 以 `0.06 m/s` 复测前、后、左、右和 `45°/135°/225°/315°`，确认斜向距离
+   比例和四轮对称性。前后左右方向已经确认正确，不要再次改方向矩阵。
+5. 在 Keil Watch 中专项验证第一次启动：
+
+```text
+0 -> 1 -> 2
+```
+
+确认 `compensated_rpm` 启动时约为各轮 `1000`，确认起转后回到分段运行值。
+
+6. 同方向小幅改变速度，状态必须保持 `2`，不能重新跳到 `1`，否则仍会反复产生
+   启动冲击。
+7. 发送 STOP，预期：
+
+```text
+2 -> 3 -> 0
+```
+
+`3` 状态期间补偿输出必须为零。
+
+8. STOP 后 300 ms 内快速恢复同方向命令且轮子仍在转，预期：
+
+```text
+3 -> 2
+```
+
+不应重新输出启动增强。
+
+9. 运行中改变方向，预期：
+
+```text
+2 -> 4 -> 1 -> 2
+```
+
+在状态 `4` 中必须为零输出，反馈降到换向释放阈值后才能反向启动。
+
+10. 重复一次 `0.04 m/s` 测试，观察 IMU yaw 是否再次异常跳变；若未复现，继续
+    作为单次异常保留，不为它修改底盘参数。
+11. 最后复测左右定角速度旋转：
+
+```powershell
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-speed-dps 10 --rotate-speed-duration 4 --verbose
+python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-right --rotate-speed-dps 10 --rotate-speed-duration 4 --verbose
+```
+
+当前串口测试基线为：
+
+```text
+COM12
+115200 baud
+```
+
+如果脚本参数默认值或后文历史章节仍写 `9600`，本轮调试应显式使用实际固件对应的
+波特率，不能同时打开其他串口程序。
+
+### 下一轮调参判断
+
+- 无法起转、状态长期为 `1`：先看四轮实际反馈和电流，再考虑提高对应轮
+  `RPM_COMP_START_RPM_*` 或延长启动增强；不要先提高所有轮。
+- 起步冲击明显：优先降低对应轮启动 RPM 或缩短最短增强时间，但必须保留可靠起转。
+- 已经转动却频繁回到 `1`：堵转阈值可能过高、确认时间过短，或反馈符号/轮位仍有误。
+- 小速度修正仍明显跳变：检查状态是否保持 `2`，再检查 600～1000 的映射参数。
+- STOP 后再次启动过于猛烈：检查是否在滑行窗口内被错误判为已经完全停止。
+- 换向冲击明显：降低 `RPM_COMP_REVERSE_RELEASE_RPM` 或延长等待，但同时检查
+  `RPM_COMP_REVERSE_TIMEOUT_MS` 是否足够。
+- 单轮进入状态 `5`：根据 fault mask 定位轮位，先查机械阻力、CAN 在线状态和反馈，
+  不要简单增大重试次数。
+- 四轮状态机确认正确之后，才继续标定 `MECANUM_YAW_ERPM_SCALE`、平移实际速度和
+  四轮线性增益；不要同时修改死区、运动学几何和闭环参数。
+
+### 已知边界和后续扩展
+
+- 当前补偿按每轮 RPM 绝对值工作，正反方向共用一套参数；若以后实测正反死区差异
+  明显，再扩展为每轮正/反两套表，不要提前增加复杂度。
+- 当前速度链仍以 VESC 内部电机转速闭环为基础，STM32 负责目标生成、状态估计、
+  运动学和死区补偿；不能把本状态机误认为车体速度闭环 PID。
+- 标定工具已经为速度反馈、麦轮运动学、打滑测试和 MPPI 动力学参数辨识预留扩展，
+  下一步应先把基础 RPM 和实际车体速度关系测准。
+- 启动增强属于克服静摩擦的前馈，不应持续替代正常运行控制；状态 `2` 是否稳定是
+  下一轮最重要的判断依据。
 
 ## 2026-07-28 当前权威状态（下次从这里继续）
 
