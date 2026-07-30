@@ -52,10 +52,13 @@ wheel_feedback
     v
 mecanum_kinematics 正运动学
     |
-    +------> slip_detector <------ imu_state
+    v
+chassis_feedback <--------------- imu_state gyro_z
+    |
+    +------> slip_detector（对比轮端 wz 与 IMU wz）
     |
     v
-state_estimator <----------------- imu_state
+state_estimator <----------------- imu_state yaw
     |
     v
 RobotState{x, y, yaw, vx, vy, wz}
@@ -103,9 +106,9 @@ V2 STOP、INIT 和旧协议命令会先释放新速度控制权，再交给原�
 
 新框架内部车体速度全部使用 SI 单位。
 
-实车验证后，新轮速运动学的正 `yaw_raw` 对应物理左转，因此
-`MECANUM_YAW_COMMAND_SIGN=+1`；原始 IMU 的物理左转仍为负，通过
-`IMU_STATE_YAW_SIGN=-1` 转换。两路最终都遵循标准的逆时针为正。
+当前实车方向修正集中在 `MECANUM_YAW_COMMAND_SIGN` 和
+`IMU_STATE_YAW_SIGN`。其具体值以 `chassis_velocity_config.h` 为准；
+模块输出必须统一遵循逆时针/左转为正，不能再由调用方二次翻转。
 
 为了兼容当前 VESC 接口，`MecanumWheelRPM_t` 和 `WheelFeedback_GetRPM()` 中名称为 `rpm` 的数据当前实际表示逻辑 `ERPM`。运动学模块根据轮径、减速比和电机极对数完成 `ERPM` 与车体速度之间的换算。
 
@@ -129,7 +132,7 @@ LF、RF、RB、LB
 - 车体速度、加速度限制
 - 轮径、底盘长宽、减速比和极对数
 - 四轮独立 ERPM 死区
-- 状态估计互补权重
+- 车体平移和角速度反馈低通时间常数
 - 打滑检测阈值、滞回和持续时间
 - 遥控器抢占死区
 
@@ -137,12 +140,17 @@ LF、RF、RB、LB
 
 ## 六、状态估计
 
-第一版使用简单互补策略：
+第一版使用确定的数据源：
 
-- `vx/vy` 采用轮速正运动学结果
-- `wz` 融合轮速角速度和 IMU `gyro_z`
+- `vx/vy` 采用四轮实际 ERPM 正运动学结果
+- `wz` 只采用 IMU `gyro_z`
+- 轮速反解的 `wz_wheel` 仅用于打滑诊断，不参与正式反馈融合
 - `yaw` 使用现有 gyro 积分累计航向
 - `x/y` 使用轮速旋转到世界坐标系后积分
+
+`chassis_feedback` 在唯一底盘任务中以 200 Hz 更新，与当前选择旧控制链
+还是新速度链无关。四轮或 gyro 数据超时后会清除对应有效位，状态估计器
+不得把保留的最后数值当成有效反馈。
 
 `state_estimator.c` 已预留 `STATE_ESTIMATOR_EKF` 模式。
 
@@ -186,6 +194,7 @@ mode
 cmd_target
 cmd_output
 feedback_rpm[LF, RF, LB, RB]
+feedback{vx, vy, wz, raw, valid}
 wheel_velocity
 imu
 robot_state

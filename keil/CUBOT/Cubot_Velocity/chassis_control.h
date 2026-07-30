@@ -2,6 +2,7 @@
 #define CHASSIS_CONTROL_H
 
 #include "chassis_velocity.h"
+#include "chassis_feedback.h"
 #include "imu_state.h"
 #include "mecanum_kinematics.h"
 #include "slip_detector.h"
@@ -45,6 +46,7 @@ typedef struct
     ChassisVelocity_t cmd_output;
     float feedback_rpm[4];
     WheelVelocity_t wheel_velocity;
+    ChassisVelocityFeedback_t feedback;
     IMUState_t imu;
     RobotState_t robot_state;
     SlipState_t slip_state;

@@ -37,3 +37,23 @@ uint8_t IMUState_Get(IMUState_t *state)
     state->acc_z = hwt9053_can.acc_g[2] * IMU_STATE_GRAVITY_MPS2;
     return 1u;
 }
+
+uint8_t IMUState_GetGyroZ(float *gyro_z_radps,
+                          uint32_t *sample_count,
+                          uint32_t *last_tick)
+{
+    float gyro_z_dps;
+
+    if (gyro_z_radps == 0) return 0u;
+    if (!HWT9053CAN_GetGyroZDps(&gyro_z_dps,
+                                sample_count,
+                                last_tick))
+    {
+        return 0u;
+    }
+
+    *gyro_z_radps = gyro_z_dps *
+                    IMU_STATE_DEG_TO_RAD *
+                    IMU_STATE_YAW_SIGN;
+    return 1u;
+}

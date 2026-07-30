@@ -43,7 +43,8 @@
 #define VESC_OUTPUT_DPS_PER_ERPM (6.0f / (VESC_M3508_POLE_PAIRS * VESC_M3508_GEAR_RATIO))
 
 /* 当前底盘的实车速度标定：逻辑 ERPM -> 轮缘线速度。 */
-#define VESC_WHEEL_MPS_PER_ERPM 4.24e-5f
+/* 2026-07-30 实车平移尺度标定：原 4.24e-5 统一乘以 1.075。 */
+#define VESC_WHEEL_MPS_PER_ERPM 4.558e-5f
 
 /* VESC 积分得到的是输出轴角度（deg），位移积分必须使用 m/deg，
  * 不能直接复用上面的 m/s per ERPM。

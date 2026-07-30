@@ -89,6 +89,7 @@
 "work_zxj\shoot.o"
 "work_zxj\chassis_control.o"
 "work_zxj\chassis_velocity.o"
+"work_zxj\chassis_feedback.o"
 "work_zxj\mecanum_kinematics.o"
 "work_zxj\wheel_feedback.o"
 "work_zxj\rpm_compensation.o"

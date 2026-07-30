@@ -25,6 +25,7 @@
 #define CMD2_INIT                 0x25 // 复位任务/路径接收状态
 #define CMD2_HEARTBEAT            0x26 // 心跳保活，当前仅记账不触发动作
 #define CMD2_ROTATE_SPEED         0x27 // 按给定车体角速度持续原地旋转
+#define CMD2_CHASSIS_VELOCITY     0x28 // 联合设置 vx、vy、wz，定点编码见 nx16.c
 
 
 // --- [新增] 状态码常量 (小车 -> Agent) ---

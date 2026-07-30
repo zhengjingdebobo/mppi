@@ -1,10 +1,268 @@
 # STM32 VESC 底盘工程交接摘要
 
-更新时间：2026-07-29
+更新时间：2026-07-30
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
 
-## 2026-07-29 当前权威状态（下次从这里继续）
+## 2026-07-30 当前权威状态（下次从这里继续）
+
+### 2026-07-30 车体系速度反馈与实车尺度标定最终交接（最新权威状态）
+
+本节是本轮工作的最终结论。若下文关于 `vx/vy/wz` 反馈、轮径、旋转比例、
+方向或下一步计划的旧记录与本节冲突，一律以本节和当前源码为准。
+
+#### 当前完成状态
+
+串口联合速度入口的车体系速度反馈已经实现并完成实车验证：
+
+```text
+vx：四轮 VESC 编码器 ERPM 正解，单位 m/s
+vy：四轮 VESC 编码器 ERPM 正解，单位 m/s
+wz：只取 IMU gyro_z，单位 rad/s
+```
+
+反馈由独立的 `chassis_feedback` 模块在底盘任务中以 `200 Hz` 更新，不依赖
+当前是串口速度模式、旧任务模式还是遥控器模式。平移反馈一阶低通时间常数为
+`40 ms`，角速度反馈为 `20 ms`。四轮反馈先在 `wheel_feedback` 边界统一成
+运动学使用的逻辑 `LF/RF/LB/RB` 符号，再进行麦轮正解。
+
+正式 `wz` 不与轮速反解角速度融合；轮速角速度只保留为诊断量。IMU 或四轮
+反馈失效时，对应 STATUS 速度字段发送 quiet NaN，不能伪装成车辆静止。
+
+STATUS 扩展帧当前字段：
+
+```text
+72..75：float vx_feedback_body，m/s
+76..79：float vy_feedback_body，m/s
+80..83：float wz_feedback_body，rad/s
+```
+
+`test_v2_protocol.py --only velocity --verbose` 已支持运动全程周期采样、约
+`400 ms` 打印一次快照，并输出稳定段平均 `vx/vy/wz`。脚本曾因误用未导入的
+`np` 在最终求平均时报错，现已改为纯 Python 求平均。
+
+#### 最终坐标与方向约定
+
+```text
+车体系 vx、vy 使用当前已经实车确认的底盘坐标约定。
+wz > 0：从车顶向下看逆时针旋转。
+wz < 0：从车顶向下看顺时针旋转。
+```
+
+当前必须保持：
+
+```c
+#define MECANUM_YAW_COMMAND_SIGN  (1.0f)
+#define IMU_STATE_YAW_SIGN        (1.0f)
+```
+
+串口新速度旋转、旧定角速度和旧定角度任务的左右方向均已统一：
+
+```text
+param1 = 1：物理左转
+param1 = 0：物理右转
+左转的目标角度、目标角速度、yaw 和 gyro_z 为正
+右转均为负
+```
+
+不要再通过反转四轮平移符号、IMU 符号或 `MECANUM_YAW_COMMAND_SIGN` 修正方向。
+
+#### 平移现实尺度标定
+
+标定前，以 `0.10 m/s` 持续 `8 s`：
+
+```text
+里程计主方向约 0.786～0.798 m
+卷尺/地砖实测约 0.85 m
+```
+
+`vx` 正反和 `vy` 正反四组数据给出的统一尺度约为 `1.075`。由于 `vx`、`vy`
+系数只相差约 `0.4%`，没有增加分轴比例，而是统一修正等效轮径和旧里程计
+ERPM 换算。当前最终值：
+
+```c
+/* chassis_velocity_config.h */
+#define MECANUM_WHEEL_DIAMETER_M  0.11556f
+
+/* vesc_motor.h */
+#define VESC_WHEEL_MPS_PER_ERPM   4.558e-5f
+```
+
+两个参数必须同步维护：前者用于新速度运动学和速度反馈，后者用于旧
+`odom_xdrive` 的输出轴角度/里程累计。只改一个会使新反馈与旧里程计尺度分裂。
+
+烧录标定固件后的 `8 s` 复测：
+
+```text
+vy+：odom 0.7898 m，稳定反馈 +0.0985 m/s
+vy-：odom 0.7979 m，稳定反馈 -0.0988 m/s
+vx+：odom 0.7875 m，稳定反馈 +0.0989 m/s
+vx-：odom 0.7961 m，稳定反馈 -0.0993 m/s
+现实位移约一块 0.80 m 地砖
+```
+
+绝大多数交叉方向漂移为毫米级；有一次 `vy-` 出现约 `3.11 cm` 交叉偏移和
+约 `1.4°` 航向变化，但其他方向及重复测试没有对称固定斜偏，因此暂按麦轮
+滚子落点、地面摩擦或单轮起步瞬态处理，不加入固定交叉补偿。
+
+#### 旋转现实尺度标定
+
+平移轮径放大 `1.075` 后，旋转运动学曾因共用轮径使 `0.20 rad/s` 的四轮目标
+由约 `1065 ERPM` 降到约 `998 ERPM`，正反理论 `90°` 测试均只转约 `85°`。
+这不是 IMU 反馈比例错误，而是旋转命令 ERPM 被平移尺度改动连带降低。
+
+已用旋转专用比例隔离并补偿：
+
+```c
+/* 0.563 * 1.075 = 0.605225 */
+#define MECANUM_YAW_ERPM_SCALE  0.6052f
+```
+
+最终用固定角速度 `|wz|=0.20 rad/s`、持续 `7.854 s`（理论 `90°`）复测：
+
+```text
+wz=+0.20：odom +91.36°，稳定反馈 +0.2036 rad/s，现实观察准确
+wz=-0.20：odom -90.39°，稳定反馈 -0.1968 rad/s，现实观察准确
+```
+
+正转误差约 `+1.5%`，反转约 `+0.4%`，旋转中心平移漂移只有几毫米。当前
+`MECANUM_YAW_ERPM_SCALE=0.6052f` 已通过实车验证，不要恢复为 `0.563f`。
+
+低速旋转仍受电机最低稳定 ERPM 限制：
+
+```text
+wz 命令 +0.10 rad/s 时，理论轮速落入死区补偿区；
+四轮运行命令被抬到约 900 ERPM；
+现实与正式反馈约为 +0.1686 rad/s。
+```
+
+因此当前底盘最小连续稳定旋转速度约为 `0.16～0.17 rad/s`。这是真实执行器
+下限，不是反馈错误；MPPI 若输出更小的非零 `wz`，应在上层钳位、置零，或
+以后实现脉冲调制，不能篡改反馈数值来掩盖。
+
+#### 最终验证命令
+
+平移 `8 s`：
+
+```cmd
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0.10 --vy 0 --wz 0 --velocity-duration 8 --verbose
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx -0.10 --vy 0 --wz 0 --velocity-duration 8 --verbose
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0 --vy 0.10 --wz 0 --velocity-duration 8 --verbose
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0 --vy -0.10 --wz 0 --velocity-duration 8 --verbose
+```
+
+固定角速度理论正反 `90°`：
+
+```cmd
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0 --vy 0 --wz 0.20 --velocity-duration 7.854 --verbose
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0 --vy 0 --wz -0.20 --velocity-duration 7.854 --verbose
+```
+
+#### 关键修改文件
+
+```text
+keil/CUBOT/Cubot_Velocity/chassis_feedback.h
+keil/CUBOT/Cubot_Velocity/chassis_feedback.c
+keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
+keil/CUBOT/Cubot_Velocity/mecanum_kinematics.c
+keil/CUBOT/Cubot_Velocity/chassis_control.c
+keil/CUBOT/Cubot_Velocity/state_estimator.c
+keil/CUBOT/Cubot_devices_Motor/wheel_feedback.c
+keil/CUBOT/Cubot_devices_Motor/vesc_motor.h
+keil/CUBOT/Cubot_devices/hwt9053_can.c
+keil/CUBOT/Cubot_devices/nx16.c
+keil/CUBOT/Cubot_modules/chassis.c
+keil/car_controlst.py
+keil/test_v2_protocol.py
+```
+
+#### 当前固件与下一步
+
+最新构建：
+
+```text
+Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
+HEX：      keil/MDK-ARM/work_Zxj/work_Zxj.hex
+生成时间：2026-07-30 12:04:21
+结果：    0 Error(s), 4 Warning(s)
+```
+
+当前 `vx/vy/wz` 反馈实现、正负方向、平移现实尺度和旋转现实尺度均已完成。
+下次不要继续调整上述尺度与方向参数；应直接从 MPPI/上位机消费这三个车体系
+反馈开始，必要时先做一组 `vx+vy+wz` 联合运动回归测试。
+
+日志中的 `yaw(imu)` 显示仍可能出现与现实累计角度不一致的大幅变化；当前正式
+角速度判断使用 `gyro_z → wz`，累计旋转判断使用 `yaw(odom)`。在没有独立定位
+基准前，不要用 `yaw(imu)` 显示值重新标定已经通过验证的 `wz`。
+
+### 2026-07-30 串口 wz 左右方向复测
+
+实车确认：
+
+```text
+串口旋转左右方向相反
+前后、横移以及 vx/vy/wz 反馈均正确
+```
+
+因此只恢复新速度运动学的 yaw 命令符号：
+
+```c
+#define MECANUM_YAW_COMMAND_SIGN (1.0f)
+```
+
+不要修改四轮平移符号、`IMU_STATE_YAW_SIGN` 或遥控器方向。
+本条实车结果优先于下文 2026-07-29 将该值设为 `-1.0f` 的记录。
+
+随后确认旧串口旋转任务方向也相反。根因是旧链仍保留两套历史补偿：
+
+```text
+CMD2_ROTATE_IN_PLACE：Python 发送 1=左转，但固件曾解析为 RIGHT
+CMD2_ROTATE_SPEED：内部仍假定物理左转 gyro_z 为负
+```
+
+现已统一整个串口旋转接口：
+
+```text
+param1 = 1：物理左转
+param1 = 0：物理右转
+左转目标角度、目标角速度、yaw 和 gyro_z 均为正
+右转均为负
+```
+
+涉及的修正包括 V2 定角方向解析、旧定角速度目标符号、Python 定角等待方向
+和测试脚本目标航向。底层遥控器方向及四轮平移矩阵未修改。
+
+### 2026-07-30 速度反馈首次串口观察结果
+
+首次运行 `--only velocity --verbose` 时，车辆实际前进约 `0.2746 m`，但
+“联合运动中”以及 STOP 后显示的速度和轮速均为零。该现象不是反馈正解失败，
+而是同时存在两个观测问题：
+
+1. 命令下发后只等待 `150 ms` 就打印，而 STATUS 周期为 `200 ms`，读取到的是
+   命令前缓存；下一次打印已经执行 STOP。
+2. STATUS 中 `cmd_vel` 和轮速 `ref` 仍读取旧控制链的 `g_dbg/rc_ctrl`，
+   新速度模式下这些字段自然为零。
+
+已修改为运动全程每 `100 ms` 取样、约每 `400 ms` 打印，并计算稳定段平均
+`vx/vy/wz`。新速度模式下 STATUS 的命令字段改取 `cmd_output`，轮速目标字段
+改取实际下发的 `compensated_rpm`。正式反馈字段仍来自 `chassis_feedback`。
+
+第二次前进 `0.10 m/s` 测试已经成功采到运动段：
+
+```text
+vx 反馈约 0.080～0.086 m/s
+vy 串扰约 0.009～0.025 m/s
+wz 在起步扰动后逐渐接近 0
+```
+
+主要异常集中在 LF：目标约 `-1674 ERPM`，实际多次只有
+`-291～-992 ERPM`，其余三轮大多接近目标。这足以解释横向串扰和航向扰动，
+下一步应优先检查 LF 的机械阻力、VESC 输出/反馈以及该方向的死区标定，
+不要先修改整体运动学。
+
+该次脚本在最终平均值处因误用未导入的 `np` 报错；已改为纯 Python 求平均。
+同时，新速度模式的 STATUS 四轮 `fdb` 改为 `feedback_rpm` 的统一运动学符号，
+使其可与 `compensated_rpm` 直接逐轮比较；详细 VESC 帧仍保留驱动原始逻辑值。
 
 > 本节记录 2026-07-29 完成的 VESC 死区标定、分段补偿和电机启动状态机。
 > 若后文关于 RPM 死区、旋转方向、串口波特率或下一步计划的旧记录与本节冲突，
@@ -234,6 +492,157 @@ keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
 同时记录稳定阶段四轮目标、补偿输出、实际 ERPM、电流和温升。当前减速度
 `0.45 m/s²` 下，若实车确实达到 `0.50 m/s`，理论减速距离约为 `0.278 m`，
 落地测试必须预留足够停车空间。
+
+### vx / vy / wz 联合定速度命令
+
+新增 V2 命令：
+
+```text
+CMD2_CHASSIS_VELOCITY = 0x28
+```
+
+用途是一帧同时设置：
+
+```text
+vx：前后速度，正数向前，单位 m/s
+vy：横向速度，正数向左，单位 m/s
+wz：旋转角速度，正数逆时针/左转，单位 rad/s
+```
+
+旧 V2 帧仍保持 16 字节。`0x28` 在原 8 字节参数区中使用三个有符号
+`int16` 定点数，分辨率均为 `0.001`：
+
+```text
+[4..5]   vx × 1000，小端 int16
+[6..7]   vy × 1000，小端 int16
+[8..9]   wz × 1000，小端 int16
+[10..11] 保留为 0
+```
+
+固件解析后一次性调用：
+
+```c
+Chassis_SetVelocity(vx_mps, vy_mps, wz_radps);
+```
+
+因此可以真正边平移边旋转，不再发生“先发平移、后发旋转导致后一条覆盖前一条”。
+新命令沿用遥控器抢占、500 ms 链路超时、平移合速度限幅、角速度限幅、加减速限制、
+RPM 补偿和故障停车保护。
+
+Python 接口：
+
+```python
+car.set_chassis_velocity(vx_mps, vy_mps, wz_radps)
+```
+
+测试文件直接封装：
+
+```python
+send_velocity_xyz(car, vx_mps, vy_mps, wz_radps)
+```
+
+发送成功后由 `CarController` 以 10 Hz 周期重发，直到 `stop_v2()`。命令行入口：
+
+```powershell
+python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0.10 --vy 0.05 --wz 0.20 --velocity-duration 5 --verbose
+```
+
+涉及文件：
+
+```text
+keil/CUBOT/Cubot_devices/nx16.h
+keil/CUBOT/Cubot_devices/nx16.c
+keil/car_controlst.py
+keil/test_v2_protocol.py
+```
+
+本功能代码已写入，但按约定没有编译和实车验证。下一次先架空测试单轴，再测试组合：
+
+```text
+(+0.10,  0.00,  0.00)  前进
+( 0.00, +0.10,  0.00)  左移
+( 0.00,  0.00, +0.20)  左转
+(+0.10, +0.05, +0.20)  前进+左移+左转
+```
+
+### 车体系 vx / vy / wz 反馈（2026-07-29 已实现，待实车验证）
+
+新增独立反馈模块：
+
+```text
+keil/CUBOT/Cubot_Velocity/chassis_feedback.h
+keil/CUBOT/Cubot_Velocity/chassis_feedback.c
+```
+
+统一坐标和数据源：
+
+```text
++vx：车体向前，四轮实际 VESC ERPM 正解，单位 m/s
++vy：车体向左，四轮实际 VESC ERPM 正解，单位 m/s
++wz：逆时针/物理左转，只使用 IMU gyro_z，单位 rad/s
+```
+
+`wz_wheel` 仍保留用于 `abs(wz_wheel - wz_imu)` 打滑诊断，但不再以
+`80% IMU + 20% wheel` 方式混入正式 `wz`。平移和角速度分别使用
+`40 ms`、`20 ms` 一阶低通初值。
+
+反馈在唯一 `ChassisControl_Update()` 入口以 200 Hz 更新，因此遥控模式、
+旧串口任务和新联合速度模式都持续刷新，不依赖是否进入新速度控制链。
+逐轮有效位为：
+
+```text
+bit0 = LF
+bit1 = RF
+bit2 = LB
+bit3 = RB
+```
+
+四轮全部新鲜时 `wheel_valid=1`，gyro_z 自身新鲜时 `gyro_valid=1`；
+两者都有效才置整体 `valid=1`。失效后保留的最后滤波值只供诊断，
+状态估计器不会继续使用。
+
+STATUS 86 字节帧长度不变，原 `[72..83]` 三个预留/临时诊断浮点字段恢复为：
+
+```text
+[72..75] vx feedback，m/s，小端 float32
+[76..79] vy feedback，m/s，小端 float32
+[80..83] wz feedback，rad/s，小端 float32
+```
+
+对应传感器失效时发送 IEEE quiet NaN，不能将掉线伪装为零速度。Python 中：
+
+```python
+feedback, valid = car.get_chassis_velocity_feedback()
+# feedback = [vx_mps, vy_mps, wz_radps]
+```
+
+Keil Watch 重点观察：
+
+```text
+g_chassis_velocity_debug.feedback.vx_mps
+g_chassis_velocity_debug.feedback.vy_mps
+g_chassis_velocity_debug.feedback.wz_radps
+g_chassis_velocity_debug.feedback.vx_raw_mps
+g_chassis_velocity_debug.feedback.vy_raw_mps
+g_chassis_velocity_debug.feedback.wz_raw_radps
+g_chassis_velocity_debug.feedback.wz_wheel_radps
+g_chassis_velocity_debug.feedback.wheel_valid_mask
+g_chassis_velocity_debug.feedback.wheel_valid
+g_chassis_velocity_debug.feedback.gyro_valid
+g_chassis_velocity_debug.feedback.valid
+```
+
+完整 Keil rebuild 已完成：
+
+```text
+0 Error(s), 59 Warning(s)
+固件：keil/MDK-ARM/work_Zxj/work_Zxj.hex
+HEX 时间：2026-07-29 23:15:41
+```
+
+59 个 warning 来自工程既有旧式函数声明、路径模块浮点提升和未使用符号；
+本次新增 `chassis_feedback.c`、gyro_z 独立读取、轮速有效位和状态估计修改
+均为 `0 errors`，没有新增文件级 warning。尚未烧录和实车验证。
 
 ### 2026-07-29 平移实车验证结果
 

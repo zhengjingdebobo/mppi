@@ -1,6 +1,7 @@
 #include "chassis_control.h"
 
 #include "chassis.h"
+#include "chassis_feedback.h"
 #include "chassis_velocity.h"
 #include "chassis_velocity_config.h"
 #include "flysky_sbus.h"
@@ -145,7 +146,6 @@ void ChassisControl_Init(void)
     rpm.reverse_timeout_ms = RPM_COMP_REVERSE_TIMEOUT_MS;
     rpm.restart_max_count = RPM_COMP_RESTART_MAX_COUNT;
 
-    estimator.gyro_weight = STATE_ESTIMATOR_GYRO_WEIGHT;
     estimator.min_dt_s = STATE_ESTIMATOR_MIN_DT_S;
     estimator.max_dt_s = STATE_ESTIMATOR_MAX_DT_S;
 
@@ -159,6 +159,7 @@ void ChassisControl_Init(void)
     MecanumKinematics_Init(&mecanum);
     RPM_CompensationInit(&rpm);
     IMUState_Init();
+    ChassisFeedback_Init();
     StateEstimator_Init(&estimator);
     SlipDetector_Init(&slip);
 
@@ -213,6 +214,7 @@ void ChassisControl_GetRobotState(RobotState_t *state)
 static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
 {
     float feedback_rpm[WHEEL_INDEX_COUNT];
+    ChassisVelocityFeedback_t feedback;
     MecanumWheelRPM_t wheel_feedback;
     MecanumWheelRPM_t wheel_target;
     MecanumWheelRPM_t wheel_compensated;
@@ -224,8 +226,10 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
     g_chassis_velocity_debug.control_valid = 0u;
     (void)ChassisVelocity_GetTarget(&g_chassis_velocity_debug.cmd_target);
 
-    g_chassis_velocity_debug.wheel_online =
-        WheelFeedback_GetRPM(feedback_rpm);
+    ChassisFeedback_Get(&feedback);
+    g_chassis_velocity_debug.feedback = feedback;
+    memcpy(feedback_rpm, feedback.wheel_rpm, sizeof(feedback_rpm));
+    g_chassis_velocity_debug.wheel_online = feedback.wheel_valid;
     memcpy(g_chassis_velocity_debug.feedback_rpm,
            feedback_rpm,
            sizeof(feedback_rpm));
@@ -242,13 +246,13 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
     wheel_feedback.lb_rpm = feedback_rpm[WHEEL_INDEX_LB];
     wheel_feedback.rb_rpm = feedback_rpm[WHEEL_INDEX_RB];
 
-    MecanumKinematics_Forward(&wheel_feedback, &wheel_velocity);
+    wheel_velocity = feedback.wheel_velocity_raw;
     g_chassis_velocity_debug.wheel_velocity = wheel_velocity;
     (void)SlipDetector_Update(&wheel_velocity,
                               &imu,
                               CHASSIS_VELOCITY_CONTROL_PERIOD_S);
     SlipDetector_GetState(&g_chassis_velocity_debug.slip_state);
-    if (!StateEstimator_Update(&wheel_velocity,
+    if (!StateEstimator_Update(&feedback,
                                &imu,
                                CHASSIS_VELOCITY_CONTROL_PERIOD_S))
     {
@@ -310,6 +314,10 @@ ChassisControlResult_e ChassisControl_Update(void)
     ChassisVelocityExitReason_e exit_reason;
 
     g_chassis_velocity_debug.cycle_count++;
+    ChassisFeedback_Update(CHASSIS_VELOCITY_CONTROL_PERIOD_S);
+    ChassisFeedback_Get(&g_chassis_velocity_debug.feedback);
+    g_chassis_velocity_debug.wheel_online =
+        g_chassis_velocity_debug.feedback.wheel_valid;
     ChassisControl_UpdateRemoteDebug();
 
     /*

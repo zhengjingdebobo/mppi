@@ -30,7 +30,6 @@ void StateEstimator_Init(const StateEstimatorParam_t *param)
     estimator_last_yaw = 0.0f;
 
     if (param == 0) return;
-    if (param->gyro_weight < 0.0f || param->gyro_weight > 1.0f) return;
     if (param->min_dt_s <= 0.0f || param->max_dt_s < param->min_dt_s) return;
 
     estimator_param = *param;
@@ -59,7 +58,8 @@ uint8_t StateEstimator_SetMode(StateEstimatorMode_e mode)
     return 0u;
 }
 
-uint8_t StateEstimator_Update(const WheelVelocity_t *wheel_velocity,
+uint8_t StateEstimator_Update(
+                              const ChassisVelocityFeedback_t *feedback,
                               const IMUState_t *imu,
                               float dt_s)
 {
@@ -70,7 +70,8 @@ uint8_t StateEstimator_Update(const WheelVelocity_t *wheel_velocity,
     float vx_world;
     float vy_world;
 
-    if (!estimator_ready || wheel_velocity == 0 || imu == 0) return 0u;
+    if (!estimator_ready || feedback == 0 || imu == 0) return 0u;
+    if (!feedback->valid) return 0u;
     if (dt_s < estimator_param.min_dt_s || dt_s > estimator_param.max_dt_s) return 0u;
 
     switch (estimator_mode)
@@ -86,11 +87,10 @@ uint8_t StateEstimator_Update(const WheelVelocity_t *wheel_velocity,
         return 0u;
     }
 
-    robot_state.vx = wheel_velocity->vx_wheel;
-    robot_state.vy = wheel_velocity->vy_wheel;
-    robot_state.wz =
-        estimator_param.gyro_weight * imu->gyro_z +
-        (1.0f - estimator_param.gyro_weight) * wheel_velocity->wz_wheel;
+    robot_state.vx = feedback->vx_mps;
+    robot_state.vy = feedback->vy_mps;
+    /* 正式车体角速度只使用 IMU gyro_z，不再与轮速反解结果融合。 */
+    robot_state.wz = feedback->wz_radps;
     robot_state.yaw = imu->yaw;
 
     if (estimator_first_update)

@@ -308,6 +308,38 @@ uint8_t HWT9053CAN_GetYawTotalDeg(float *yaw_total_deg)
     return 1u;
 }
 
+uint8_t HWT9053CAN_GetGyroZDps(float *gyro_z_dps,
+                              uint32_t *sample_count,
+                              uint32_t *last_tick)
+{
+    uint32_t count_before;
+    uint32_t count_after;
+    uint8_t retry;
+
+    if (gyro_z_dps == 0) return 0u;
+    if (hwt9053_can.gyro_count == 0u ||
+        (HAL_GetTick() - hwt9053_can.last_gyro_tick) >= 200u)
+    {
+        return 0u;
+    }
+
+    for (retry = 0u; retry < 3u; retry++)
+    {
+        count_before = hwt9053_can.gyro_count;
+        *gyro_z_dps =
+            hwt9053_can.gyro_dps[2] * HWT9053_CONTROL_YAW_SIGN;
+        if (last_tick != 0) *last_tick = hwt9053_can.last_gyro_tick;
+        count_after = hwt9053_can.gyro_count;
+        if (count_before == count_after)
+        {
+            if (sample_count != 0) *sample_count = count_after;
+            return 1u;
+        }
+    }
+
+    return 0u;
+}
+
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     if (hcan == &hcan1)

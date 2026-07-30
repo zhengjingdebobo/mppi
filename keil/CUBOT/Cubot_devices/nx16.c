@@ -11,6 +11,7 @@
 #include "hardware_config.h"
 #include "vesc_motor.h"
 #include "chassis_control.h"
+#include "chassis_feedback.h"
 #include "chassis_velocity.h"
 #include "chassis_rpm_calibration.h"
 
@@ -65,6 +66,7 @@ typedef struct
     uint8_t sequence;
     float param1;
     float param2;
+    float param3;
     volatile uint8_t valid;
 } AgentV2PendingCommand_t;
 
@@ -80,6 +82,7 @@ BrainCore_t nx16_ctrl = {
 // --- 用于将4字节数组安全转换为float的联合体 ---
 typedef union {
     float f;
+    uint32_t u32;
     uint8_t bytes[4];
 } FloatUnion;
 
@@ -88,6 +91,16 @@ static float FrameReadFloatLE(const uint8_t *buf)
     FloatUnion value;
     memcpy(value.bytes, buf, 4u);
     return value.f;
+}
+
+/* 从 V2 帧中读取小端有符号 16 位定点原始值，不依赖内存对齐。 */
+static int16_t FrameReadI16LE(const uint8_t *buf)
+{
+    uint16_t raw;
+
+    raw = (uint16_t)buf[0] |
+          ((uint16_t)buf[1] << 8);
+    return (int16_t)raw;
 }
 
 static uint8_t FrameChecksumU8(const uint8_t *buf, uint8_t start, uint8_t end)
@@ -508,6 +521,7 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
     uint8_t sequence;
     float param1;
     float param2;
+    float param3;
 
     if (frame_buf[0] != 0xABu || frame_buf[1] != 0xCDu || frame_buf[15] != 0xDDu)
     {
@@ -532,7 +546,8 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
         cmd_id != CMD2_STOP &&
         cmd_id != CMD2_INIT &&
         cmd_id != CMD2_HEARTBEAT &&
-        cmd_id != CMD2_ROTATE_SPEED)
+        cmd_id != CMD2_ROTATE_SPEED &&
+        cmd_id != CMD2_CHASSIS_VELOCITY)
     {
         return;
     }
@@ -553,8 +568,27 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
         return;
     }
 
-    param1 = FrameReadFloatLE(&frame_buf[4]);
-    param2 = FrameReadFloatLE(&frame_buf[8]);
+    if (cmd_id == CMD2_CHASSIS_VELOCITY)
+    {
+        /*
+         * 联合速度命令沿用 16 字节 V2 帧，8 字节参数区定义如下：
+         * [4..5]  vx，单位 0.001 m/s，有符号 int16，小端
+         * [6..7]  vy，单位 0.001 m/s，有符号 int16，小端
+         * [8..9]  wz，单位 0.001 rad/s，有符号 int16，小端
+         * [10..11] 保留，当前必须由上位机填写 0
+         *
+         * param1/2/3 在邮箱中恢复为 SI 单位，底盘任务一次性提交三轴目标。
+         */
+        param1 = (float)FrameReadI16LE(&frame_buf[4]) * 0.001f;
+        param2 = (float)FrameReadI16LE(&frame_buf[6]) * 0.001f;
+        param3 = (float)FrameReadI16LE(&frame_buf[8]) * 0.001f;
+    }
+    else
+    {
+        param1 = FrameReadFloatLE(&frame_buf[4]);
+        param2 = FrameReadFloatLE(&frame_buf[8]);
+        param3 = 0.0f;
+    }
 
     nx16_ctrl.CommandID_test_zxj = cmd_id;
 
@@ -570,6 +604,7 @@ static void ParseAgentCommandV2(const uint8_t *frame_buf)
     agent_v2_pending.sequence = sequence;
     agent_v2_pending.param1 = param1;
     agent_v2_pending.param2 = param2;
+    agent_v2_pending.param3 = param3;
     __DMB();
     agent_v2_pending.valid = 1u;
 
@@ -625,6 +660,7 @@ void Nx16ProcessPendingCommand(void)
     pending.sequence = agent_v2_pending.sequence;
     pending.param1 = agent_v2_pending.param1;
     pending.param2 = agent_v2_pending.param2;
+    pending.param3 = agent_v2_pending.param3;
     agent_v2_pending.valid = 0u;
     NX16_CRITICAL_EXIT();
 
@@ -674,7 +710,8 @@ void Nx16ProcessPendingCommand(void)
 
     case CMD2_ROTATE_IN_PLACE:
     {
-        ChassisRotateDir_e dir = (((int32_t)(pending.param1 + 0.5f)) == 0) ?
+        /* V2 统一约定：param1=1 左转，param1=0 右转。 */
+        ChassisRotateDir_e dir = (pending.param1 >= 0.5f) ?
                                  CHASSIS_ROTATE_LEFT : CHASSIS_ROTATE_RIGHT;
         ChassisVelocity_Stop();
         ChassisControl_RequestLegacyMode();
@@ -716,6 +753,42 @@ void Nx16ProcessPendingCommand(void)
         }
         break;
     }
+
+    case CMD2_CHASSIS_VELOCITY:
+        legacy_cmd = CMD2_CHASSIS_VELOCITY;
+        if (ChassisControl_RemoteOwnsControl())
+        {
+            /*
+             * 遥控器抢占时丢弃本周期联合速度帧并停车；上位机后台仍会
+             * 周期重发，遥控器释放后的下一帧可以重新申请控制。
+             */
+            ChassisVelocity_Stop();
+            api_result = CHASSIS_API_BUSY;
+        }
+        else if (pending.param1 != pending.param1 ||
+                 pending.param2 != pending.param2 ||
+                 pending.param3 != pending.param3)
+        {
+            api_result = CHASSIS_API_BAD_PARAM;
+        }
+        else if (nx16_ctrl.InTask != 0u)
+        {
+            api_result = CHASSIS_API_BUSY;
+        }
+        else
+        {
+            /*
+             * 一帧原子更新车体三轴速度：
+             * vx、vy 单位 m/s，wz 单位 rad/s。
+             * 平移合速度、旋转速度和加速度仍由新速度链统一限幅。
+             */
+            ChassisClearApiCommand();
+            Chassis_SetVelocity(pending.param1,
+                                pending.param2,
+                                pending.param3);
+            api_result = CHASSIS_API_OK;
+        }
+        break;
 
     case CMD2_STOP:
         ChassisVelocity_Stop();
@@ -798,6 +871,7 @@ static USARTInstance *nx16_usart_instance;
 void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
 {
     static uint8_t frame[FRAME_LEN_EXT];
+    ChassisVelocityFeedback_t velocity_feedback;
 
     frame[0] = 0xAA;
     frame[1] = 0xAA;
@@ -809,7 +883,7 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
                cmd_vx_converter, cmd_vy_converter, cmd_wz_converter,
                lf_ref_converter, rf_ref_converter, lb_ref_converter, rb_ref_converter,
                lf_fdb_converter, rf_fdb_converter, lb_fdb_converter, rb_fdb_converter,
-               cmd_vx_true_converter, cmd_vy_true_converter, cmd_wz_true_converter;
+               fdb_vx_converter, fdb_vy_converter, fdb_wz_converter;
     
     x_converter.f = nx16_ctrl.current_x;
     y_converter.f = nx16_ctrl.current_y;
@@ -819,23 +893,68 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     tar_y_converter.f = (float)CANGetHcan1Fifo1DispatchCount();
     tar_yaw_converter.f = (float)CANGetLastExtId();
     
-    cmd_vx_converter.f = g_dbg.cmd_vx;
-    cmd_vy_converter.f = g_dbg.cmd_vy;
-    cmd_wz_converter.f = g_dbg.cmd_wz;
-    
-    lf_ref_converter.f = rc_ctrl.vt_lf;
-    lf_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LF);
-    rf_ref_converter.f = rc_ctrl.vt_rf;
-    rf_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RF);
+    if (ChassisControl_GetMode() == CHASSIS_CONTROL_MODE_VELOCITY)
+    {
+        /* 新速度链遥测必须取新控制器快照，不能继续发送旧链的零值。 */
+        cmd_vx_converter.f = g_chassis_velocity_debug.cmd_output.vx_mps;
+        cmd_vy_converter.f = g_chassis_velocity_debug.cmd_output.vy_mps;
+        cmd_wz_converter.f = g_chassis_velocity_debug.cmd_output.wz_radps;
+        lf_ref_converter.f =
+            g_chassis_velocity_debug.compensated_rpm.lf_rpm;
+        rf_ref_converter.f =
+            g_chassis_velocity_debug.compensated_rpm.rf_rpm;
+        lb_ref_converter.f =
+            g_chassis_velocity_debug.compensated_rpm.lb_rpm;
+        rb_ref_converter.f =
+            g_chassis_velocity_debug.compensated_rpm.rb_rpm;
+        lf_fdb_converter.f =
+            g_chassis_velocity_debug.feedback_rpm[WHEEL_INDEX_LF];
+        rf_fdb_converter.f =
+            g_chassis_velocity_debug.feedback_rpm[WHEEL_INDEX_RF];
+        lb_fdb_converter.f =
+            g_chassis_velocity_debug.feedback_rpm[WHEEL_INDEX_LB];
+        rb_fdb_converter.f =
+            g_chassis_velocity_debug.feedback_rpm[WHEEL_INDEX_RB];
+    }
+    else
+    {
+        cmd_vx_converter.f = g_dbg.cmd_vx;
+        cmd_vy_converter.f = g_dbg.cmd_vy;
+        cmd_wz_converter.f = g_dbg.cmd_wz;
+        lf_ref_converter.f = rc_ctrl.vt_lf;
+        rf_ref_converter.f = rc_ctrl.vt_rf;
+        lb_ref_converter.f = rc_ctrl.vt_lb;
+        rb_ref_converter.f = rc_ctrl.vt_rb;
+        lf_fdb_converter.f =
+            (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LF);
+        rf_fdb_converter.f =
+            (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RF);
+        lb_fdb_converter.f =
+            (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LB);
+        rb_fdb_converter.f =
+            (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RB);
+    }
 
-    lb_ref_converter.f = rc_ctrl.vt_lb;
-    lb_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_LB);
-    rb_ref_converter.f = rc_ctrl.vt_rb;
-    rb_fdb_converter.f = (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RB);
-
-    cmd_vx_true_converter.f = (float)CANGetHcan1RxMsgCount();
-    cmd_vy_true_converter.f = (float)VESCMotorGetRxAnyCount();
-    cmd_wz_true_converter.f = (float)nx16_ctrl.InTask;
+    ChassisFeedback_Get(&velocity_feedback);
+    if (velocity_feedback.wheel_valid)
+    {
+        fdb_vx_converter.f = velocity_feedback.vx_mps;
+        fdb_vy_converter.f = velocity_feedback.vy_mps;
+    }
+    else
+    {
+        /* 无效反馈用 quiet NaN 表示，不能伪装成车辆静止。 */
+        fdb_vx_converter.u32 = 0x7FC00000u;
+        fdb_vy_converter.u32 = 0x7FC00000u;
+    }
+    if (velocity_feedback.gyro_valid)
+    {
+        fdb_wz_converter.f = velocity_feedback.wz_radps;
+    }
+    else
+    {
+        fdb_wz_converter.u32 = 0x7FC00000u;
+    }
 
     
     memcpy(&frame[4], x_converter.bytes, 4);
@@ -862,9 +981,9 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     memcpy(&frame[64], rb_ref_converter.bytes, 4); // RB Ref
     memcpy(&frame[68], rb_fdb_converter.bytes, 4); // RB Fdb (结束于79)
     
-    memcpy(&frame[72], cmd_vx_true_converter.bytes, 4);
-    memcpy(&frame[76], cmd_vy_true_converter.bytes, 4);
-    memcpy(&frame[80], cmd_wz_true_converter.bytes, 4);
+    memcpy(&frame[72], fdb_vx_converter.bytes, 4); /* 车体系 vx，m/s */
+    memcpy(&frame[76], fdb_vy_converter.bytes, 4); /* 车体系 vy，m/s */
+    memcpy(&frame[80], fdb_wz_converter.bytes, 4); /* 车体系 wz，rad/s */
 
 
     uint8_t checksum = 0;

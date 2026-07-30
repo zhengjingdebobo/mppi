@@ -32,6 +32,7 @@ class CarController:
     CMD2_INIT = 0x25
     CMD2_HEARTBEAT = 0x26
     CMD2_ROTATE_SPEED = 0x27
+    CMD2_CHASSIS_VELOCITY = 0x28
 
     STATUS_IDLE = 0x00
     STATUS_EXECUTING = 0x01
@@ -60,7 +61,10 @@ class CarController:
         self.debug_target = np.array([0.0, 0.0, 0.0], dtype=np.float32) 
         self.debug_cmd_vel = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.debug_motro_vel = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        # STATUS 帧中的车体系反馈：[vx m/s, vy m/s, wz rad/s]。
+        # 传感器失效时固件发送 NaN。
         self.debug_cmd_vel_true = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        self.chassis_velocity_feedback = self.debug_cmd_vel_true
         self.vesc_can_diag = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         self.vesc_feedback = {
             "timestamp_us": 0,
@@ -199,7 +203,17 @@ class CarController:
                 command = self._continuous_v2_command
                 if command is None:
                     self.continuous_command_active.clear()
-                elif self._send_command_v2(*command):
+                elif (
+                    command[0] == self.CMD2_CHASSIS_VELOCITY
+                    and self._send_chassis_velocity_v2(
+                        command[1], command[2], command[3]
+                    )
+                ):
+                    self.continuous_refresh_tx_count += 1
+                elif (
+                    command[0] != self.CMD2_CHASSIS_VELOCITY
+                    and self._send_command_v2(*command)
+                ):
                     self.continuous_refresh_tx_count += 1
                 else:
                     self.continuous_command_active.clear()
@@ -294,6 +308,73 @@ class CarController:
             )
             checksum = sum(payload) & 0xFF
             frame = b"\xAB\xCD" + payload + struct.pack("<B", checksum) + b"\xDD"
+
+            try:
+                self.ser.write(frame)
+                self.ser.flush()
+                return True
+            except (OSError, serial.SerialException) as exc:
+                self.listener_error = str(exc)
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+                self.ser = None
+                self.is_running = False
+                self.command_completed_event.set()
+                return False
+
+    def _send_chassis_velocity_v2(
+        self,
+        vx_mps: float,
+        vy_mps: float,
+        wz_radps: float,
+        flags: int = 0,
+        seq: Optional[int] = None,
+    ) -> bool:
+        """
+        发送16字节V2联合速度帧。
+
+        为了在旧V2帧的8字节参数区中同时携带三个数值，采用有符号int16定点编码：
+        vx、vy 的单位为0.001 m/s，wz的单位为0.001 rad/s。
+        """
+        values = (float(vx_mps), float(vy_mps), float(wz_radps))
+        if not all(math.isfinite(value) for value in values):
+            self.listener_error = "vx/vy/wz 必须是有限数值"
+            return False
+
+        scaled = tuple(int(round(value * 1000.0)) for value in values)
+        if any(value < -32768 or value > 32767 for value in scaled):
+            self.listener_error = "vx/vy/wz 超出V2联合速度定点编码范围"
+            return False
+
+        with self.serial_lock:
+            if not self.ser or not self.ser.is_open:
+                self.listener_error = self.listener_error or "serial not connected"
+                return False
+
+            if seq is None:
+                seq = self._v2_seq & 0xFF
+                self._v2_seq = (self._v2_seq + 1) & 0xFF
+
+            payload = struct.pack(
+                "<BBhhhHBB",
+                self.CMD2_CHASSIS_VELOCITY,
+                flags & 0xFF,
+                scaled[0],
+                scaled[1],
+                scaled[2],
+                0,
+                seq & 0xFF,
+                0,
+            )
+            checksum = sum(payload) & 0xFF
+            frame = (
+                b"\xAB\xCD"
+                + payload
+                + struct.pack("<B", checksum)
+                + b"\xDD"
+            )
 
             try:
                 self.ser.write(frame)
@@ -501,7 +582,7 @@ class CarController:
             rb_ref = data[17]
             rb_fdb = data[18]
 
-            can1_rx, vesc_rx, in_task = data[19], data[20], data[21]
+            fdb_vx, fdb_vy, fdb_wz = data[19], data[20], data[21]
 
             if curr_yaw < 0:
                 curr_yaw += 360
@@ -564,13 +645,11 @@ class CarController:
                 self.debug_motro_vel[6] = rb_ref
                 self.debug_motro_vel[7] = rb_fdb
 
-                self.debug_cmd_vel_true[0] = can1_rx
-                self.debug_cmd_vel_true[1] = vesc_rx
-                self.debug_cmd_vel_true[2] = in_task
+                self.debug_cmd_vel_true[0] = fdb_vx
+                self.debug_cmd_vel_true[1] = fdb_vy
+                self.debug_cmd_vel_true[2] = fdb_wz
                 self.vesc_can_diag[0] = fifo0_cb
                 self.vesc_can_diag[1] = fifo1_cb
-                self.vesc_can_diag[2] = can1_rx
-                self.vesc_can_diag[3] = vesc_rx
                 self.vesc_can_diag[4] = last_ext_id
 
                 if self.pending_command_id is not None and last_cmd_id == self.pending_command_id:
@@ -835,6 +914,46 @@ class CarController:
             self._continuous_v2_command = None
         return ok
 
+    def set_chassis_velocity(
+        self,
+        vx_mps: float,
+        vy_mps: float,
+        wz_radps: float,
+    ) -> bool:
+        """
+        联合设置车体三轴定速度。
+
+        vx_mps：前后速度，正数向前，单位m/s。
+        vy_mps：横向速度，正数向左，单位m/s。
+        wz_radps：角速度，正数逆时针/左转，单位rad/s。
+
+        三个分量由同一帧提交，支持边平移边旋转；固件仍会执行合速度、
+        角速度、加减速度、RPM补偿和命令超时保护。
+        """
+        if not self._serial_is_open():
+            self.listener_error = self.listener_error or "serial not connected"
+            return False
+
+        ok = self._send_chassis_velocity_v2(vx_mps, vy_mps, wz_radps)
+        moving = (
+            abs(vx_mps) >= 1e-4
+            or abs(vy_mps) >= 1e-4
+            or abs(wz_radps) >= 1e-4
+        )
+        if ok and moving:
+            self.continuous_refresh_tx_count = 0
+            self._continuous_v2_command = (
+                self.CMD2_CHASSIS_VELOCITY,
+                float(vx_mps),
+                float(vy_mps),
+                float(wz_radps),
+            )
+            self.continuous_command_active.set()
+        elif ok:
+            self.continuous_command_active.clear()
+            self._continuous_v2_command = None
+        return ok
+
     def move_with_angle_distance(self, angle_deg: float, distance_m: float, timeout: float = 10.0) -> bool:
         """
         V2 协议任意角度定距离位移。
@@ -878,16 +997,15 @@ class CarController:
 
         self.continuous_command_active.clear()
         self._continuous_v2_command = None
-        # STM32 枚举方向与当前实车安装方向相反：
-        # 左转发送 RIGHT，右转发送 LEFT，保持已经实车确认的方向。
-        legacy_cmd = self.CMD_ROTATE_CW if turn_left else self.CMD_ROTATE_CCW
+        # 全链路统一：左转=CCW=正角度，右转=CW=负角度。
+        legacy_cmd = self.CMD_ROTATE_CCW if turn_left else self.CMD_ROTATE_CW
         _, start_yaw = self.get_odom_state()
         self._prepare_blocking_command(legacy_cmd)
         if not self._send_command_v2(self.CMD2_ROTATE_IN_PLACE, 1.0 if turn_left else 0.0, abs(angle_deg)):
             self._clear_pending_command()
             return False
 
-        signed_angle = -abs(angle_deg) if turn_left else abs(angle_deg)
+        signed_angle = abs(angle_deg) if turn_left else -abs(angle_deg)
         success = self._wait_for_rotate_feedback(start_yaw, signed_angle, timeout)
         if not success:
             self.stop_v2()
@@ -945,6 +1063,17 @@ class CarController:
         """docstring"""
         with self.lock:
             return self.odom_position.copy(), float(self.odom_yaw_deg)
+
+    def get_chassis_velocity_feedback(self):
+        """
+        返回车体系速度反馈和整体有效性。
+
+        速度顺序为 [vx_mps, vy_mps, wz_radps]；任一来源失效时，
+        固件会在相应分量中发送 NaN。
+        """
+        with self.lock:
+            feedback = self.chassis_velocity_feedback.copy()
+        return feedback, bool(np.all(np.isfinite(feedback)))
 
     def get_last_imu(self) -> dict:
         with self.lock:

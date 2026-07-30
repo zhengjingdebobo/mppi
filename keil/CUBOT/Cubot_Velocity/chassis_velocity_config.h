@@ -15,6 +15,13 @@
 #define CHASSIS_VELOCITY_COMMAND_TIMEOUT_MS     500u
 
 /*
+ * 车体系速度反馈一阶低通时间常数。
+ * 平移反馈主要抑制 VESC ERPM 更新抖动；角速度采用更小时间常数以减少闭环延迟。
+ */
+#define CHASSIS_FEEDBACK_TRANSLATION_TAU_S      0.040f
+#define CHASSIS_FEEDBACK_YAW_TAU_S              0.020f
+
+/*
  * 新串口速度链的最大平移合速度，单位 m/s。
  *
  * 前进、后退、横移和任意斜向共用同一个上限；控制器按 vx/vy 矢量模长
@@ -44,7 +51,11 @@
 #define CHASSIS_VELOCITY_MAX_ANG_ACCEL_RADPS2   1.50f
 
 /* 麦克纳姆/X-drive 几何与传动参数。 */
-#define MECANUM_WHEEL_DIAMETER_M                0.1075f
+/*
+ * 2026-07-30 实车平移尺度标定：
+ * vx/vy 的 0.80 m 里程对应约 0.85 m 实际位移，统一乘以 1.075。
+ */
+#define MECANUM_WHEEL_DIAMETER_M                0.11556f
 #define MECANUM_CHASSIS_LENGTH_M                0.4000f
 #define MECANUM_CHASSIS_WIDTH_M                 0.4000f
 #define MECANUM_GEAR_RATIO                      19.0f
@@ -52,18 +63,19 @@
 #define MECANUM_INV_SQRT2                       0.70710678f
 
 /*
- * 10 deg/s 实车标定得到稳态约 17.75 deg/s，因此旋转 ERPM 单独乘
- * 10 / 17.75 = 0.563。该比例不影响已经验证的平移换算。
+ * 10 deg/s 实车标定得到稳态约 17.75 deg/s，原始旋转比例为 0.563。
+ * 2026-07-30 平移尺度放大 1.075 后，为避免共用轮径降低旋转 ERPM，
+ * 旋转专用比例同步补偿为 0.563 * 1.075 = 0.605225。
  */
-#define MECANUM_YAW_ERPM_SCALE                  0.563f
+#define MECANUM_YAW_ERPM_SCALE                  0.6052f
 
 /*
- * 2026-07-29 实车复测：
- * 串口定角速度命令的左右方向与物理旋转方向相反，而定角度旧任务正确。
- * 因此只反向新速度运动学的 yaw 指令；该符号不影响前后/横向平移，
- * 也不修改定角度旧任务链。
+ * 2026-07-30 联合速度实车复测：
+ * -1.0f 会使串口 wz 的物理左右方向反转，恢复为 +1.0f。
+ * 该符号只作用于新速度运动学的 yaw 项，不修改前后/横移、IMU 反馈、
+ * 遥控器或旧定角度任务。
  */
-#define MECANUM_YAW_COMMAND_SIGN                (-1.0f)
+#define MECANUM_YAW_COMMAND_SIGN                (1.0f)
 #define IMU_STATE_YAW_SIGN                      (1.0f)
 
 /*
@@ -221,8 +233,7 @@
  */
 #define RPM_COMP_MAX_OUTPUT_RPM                      13000.0f
 
-/* 互补状态估计参数。 */
-#define STATE_ESTIMATOR_GYRO_WEIGHT             0.80f
+/* 状态积分允许的周期范围。 */
 #define STATE_ESTIMATOR_MIN_DT_S                0.001f
 #define STATE_ESTIMATOR_MAX_DT_S                0.020f
 

@@ -32,6 +32,9 @@ V2 串口协议底盘控制测试脚本
   # 仅测试定角速度旋转（左转 20 deg/s，持续 5 秒）
   python keil\test_v2_protocol.py --port COM12 --only rotate-speed --rotate-speed-dps 20 --rotate-speed-duration 5
 
+  # 联合速度：0.10 m/s前进、0.05 m/s左移，同时以0.20 rad/s左转
+  python keil\test_v2_protocol.py --port COM12 --only velocity --vx 0.10 --vy 0.05 --wz 0.20 --velocity-duration 5
+
   # 仅测试定距离位移
   python keil\test_v2_protocol.py --port COM12 --only distance --distance-angle 0 --distance-m 0.3
 
@@ -44,7 +47,11 @@ V2 串口协议底盘控制测试脚本
 参数说明:
   --port            串口号，Windows 如 COM12，Linux 如 /dev/ttyUSB0
   --baudrate        波特率，默认 115200
-  --only            只运行指定测试: all | speed | rotate-speed | distance | rotate | deadzone
+  --only            只运行指定测试: all | velocity | speed | rotate-speed | distance | rotate | deadzone
+  --vx              联合速度前后分量，正数向前，单位 m/s
+  --vy              联合速度横向分量，正数向左，单位 m/s
+  --wz              联合速度旋转分量，正数左转，单位 rad/s
+  --velocity-duration 联合速度测试持续时间（秒）
   --speed-angle     速度测试方向角（度），0=前 90=左 180=后 270=右
   --speed-mps       速度测试目标速度（m/s），默认 0.05
   --speed-duration  速度测试持续时间（秒），默认 1.0
@@ -91,10 +98,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baudrate", type=int, default=115200, help="波特率，默认 115200")
     parser.add_argument(
         "--only",
-        choices=("all", "speed", "rotate-speed", "distance", "rotate", "deadzone"),
+        choices=("all", "velocity", "speed", "rotate-speed", "distance", "rotate", "deadzone"),
         default="all",
-        help="只运行指定测试: all | speed | rotate-speed | distance | rotate | deadzone",
+        help="只运行指定测试: all | velocity | speed | rotate-speed | distance | rotate | deadzone",
     )
+    parser.add_argument("--vx", type=float, default=0.0, help="联合速度前后分量 m/s，正数向前")
+    parser.add_argument("--vy", type=float, default=0.0, help="联合速度横向分量 m/s，正数向左")
+    parser.add_argument("--wz", type=float, default=0.0, help="联合速度旋转分量 rad/s，正数左转")
+    parser.add_argument("--velocity-duration", type=float, default=5.0, help="联合速度测试持续时间 s")
     parser.add_argument("--speed-angle", type=float, default=0.0, help="速度测试方向角（度）")
     parser.add_argument("--speed-mps", type=float, default=0.05, help="速度测试目标速度 m/s")
     parser.add_argument("--speed-duration", type=float, default=1.0, help="速度测试持续时间 s")
@@ -133,7 +144,7 @@ def print_state(car: CarController, tag: str = "", verbose: bool = False) -> Non
     imu_yaw = imu.get("yaw_total_deg", 0.0) if imu else 0.0
     print(f"{header} x={odom[0]:.4f}  y={odom[1]:.4f}  "
           f"yaw(odom)={yaw:.2f}  yaw(imu)={imu_yaw:.2f}  "
-          f"status={status_text}  in_task={car.debug_cmd_vel_true[2]:.0f}")
+          f"status={status_text}")
 
     if not verbose:
         return
@@ -144,6 +155,9 @@ def print_state(car: CarController, tag: str = "", verbose: bool = False) -> Non
         print(f"  IMU: gyro_z={imu.get('gyro_z_dps', 0):.2f} dps  "
               f"acc=({imu.get('acc_x_g', 0):.3f},{imu.get('acc_y_g', 0):.3f},{imu.get('acc_z_g', 0):.3f})")
     print(f"  cmd_vel: vx={car.debug_cmd_vel[0]:.2f} vy={car.debug_cmd_vel[1]:.2f} wz={car.debug_cmd_vel[2]:.2f}")
+    print(f"  fdb_vel(body): vx={car.chassis_velocity_feedback[0]:+.3f} m/s  "
+          f"vy={car.chassis_velocity_feedback[1]:+.3f} m/s  "
+          f"wz={car.chassis_velocity_feedback[2]:+.3f} rad/s")
     print(f"  wheels: LF(ref={car.debug_motro_vel[0]:.0f} fdb={car.debug_motro_vel[1]:.0f})  "
           f"RF(ref={car.debug_motro_vel[2]:.0f} fdb={car.debug_motro_vel[3]:.0f})  "
           f"LB(ref={car.debug_motro_vel[4]:.0f} fdb={car.debug_motro_vel[5]:.0f})  "
@@ -168,13 +182,31 @@ def _require_ok(ok: bool, step_name: str) -> None:
         raise RuntimeError(f"{step_name} 失败")
 
 
+def send_velocity_xyz(
+    car: CarController,
+    vx_mps: float,
+    vy_mps: float,
+    wz_radps: float,
+) -> bool:
+    """
+    直接发送车体三轴定速度命令。
+
+    vx_mps：前后速度，正数向前，单位 m/s。
+    vy_mps：横向速度，正数向左，单位 m/s。
+    wz_radps：旋转角速度，正数逆时针/左转，单位 rad/s。
+
+    三个值通过同一个V2联合速度帧提交，能够实现边平移边旋转。
+    发送成功后CarController会以10 Hz周期重发，直到调用stop_v2()。
+    """
+    return car.set_chassis_velocity(vx_mps, vy_mps, wz_radps)
+
+
 def _snapshot_rotate(car: CarController, started_at: float, target_yaw: float) -> dict:
     """原子读取一份旋转调试快照，避免各接收帧更新到一半。"""
     with car.lock:
         imu = dict(car.last_imu)
         wheels = tuple(float(v) for v in car.debug_motro_vel)
         cmd = tuple(float(v) for v in car.debug_cmd_vel)
-        in_task = float(car.debug_cmd_vel_true[2])
         status = int(car.current_status)
         last_cmd = int(car.last_feedback_cmd_id)
         vesc = dict(car.vesc_feedback)
@@ -190,7 +222,7 @@ def _snapshot_rotate(car: CarController, started_at: float, target_yaw: float) -
         "status": status,
         "status_name": _status_name(status),
         "last_cmd_id": last_cmd,
-        "in_task": in_task,
+        "in_task": 1.0 if status == CarController.STATUS_EXECUTING else 0.0,
         "target_yaw_deg": target_yaw,
         "yaw_total_deg": control_yaw,
         "raw_imu_yaw_total_deg": raw_yaw,
@@ -387,8 +419,8 @@ def run_rotate_speed_with_log(car: CarController, args, rotate_left: bool) -> bo
 def run_rotate_with_log(car: CarController, args, rotate_left: bool) -> bool:
     """执行阻塞式旋转命令，同时记录闭环时间序列 CSV。"""
     _, initial_yaw = car.get_odom_state()
-    # 当前实车约定：左转累计 yaw 减小，右转累计 yaw 增加。
-    signed_angle = -args.rotate_angle if rotate_left else args.rotate_angle
+    # 统一车体系约定：左转累计 yaw 增大，右转累计 yaw 减小。
+    signed_angle = args.rotate_angle if rotate_left else -args.rotate_angle
     target_yaw = initial_yaw + signed_angle
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     direction = "left" if rotate_left else "right"
@@ -472,7 +504,6 @@ def _snapshot_distance(
         imu = dict(car.last_imu)
         wheels = tuple(float(v) for v in car.debug_motro_vel)
         cmd = tuple(float(v) for v in car.debug_cmd_vel)
-        in_task = float(car.debug_cmd_vel_true[2])
         status = int(car.current_status)
         last_cmd = int(car.last_feedback_cmd_id)
         vesc = dict(car.vesc_feedback)
@@ -497,7 +528,7 @@ def _snapshot_distance(
         "status": status,
         "status_name": _status_name(status),
         "last_cmd_id": last_cmd,
-        "in_task": in_task,
+        "in_task": 1.0 if status == CarController.STATUS_EXECUTING else 0.0,
         "x_m": x_m,
         "y_m": y_m,
         "yaw_total_deg": yaw_deg,
@@ -726,6 +757,67 @@ def main() -> int:
             time.sleep(0.3)
             print("\n测试完成。")
             return 0
+
+        # ---- vx / vy / wz 联合定速度测试 ----
+        if args.only == "velocity":
+            duration = max(0.2, float(args.velocity_duration))
+            print(
+                "\n── 联合定速度: "
+                f"vx={args.vx:+.3f} m/s  "
+                f"vy={args.vy:+.3f} m/s  "
+                f"wz={args.wz:+.3f} rad/s  "
+                f"持续 {duration:.1f}s ──"
+            )
+            _require_ok(
+                send_velocity_xyz(car, args.vx, args.vy, args.wz),
+                "联合速度命令下发",
+            )
+            started_at = time.monotonic()
+            next_sample = started_at + 0.25
+            next_print = next_sample
+            feedback_samples = []
+            while True:
+                now = time.monotonic()
+                if now >= started_at + duration:
+                    break
+                if now >= next_sample:
+                    feedback, feedback_valid = (
+                        car.get_chassis_velocity_feedback()
+                    )
+                    elapsed = now - started_at
+                    if feedback_valid and elapsed >= min(0.8, duration * 0.25):
+                        feedback_samples.append(
+                            tuple(float(value) for value in feedback)
+                        )
+                    if now >= next_print:
+                        print_state(
+                            car,
+                            f"联合运动中 {elapsed:.1f}s",
+                            verbose,
+                        )
+                        next_print += 0.40
+                    next_sample += 0.10
+                time.sleep(min(0.02, max(0.0, next_sample - time.monotonic())))
+
+            if feedback_samples:
+                sample_count = float(len(feedback_samples))
+                average_feedback = tuple(
+                    sum(sample[axis] for sample in feedback_samples) /
+                    sample_count
+                    for axis in range(3)
+                )
+                print(
+                    "稳定段平均反馈: "
+                    f"vx={average_feedback[0]:+.4f} m/s  "
+                    f"vy={average_feedback[1]:+.4f} m/s  "
+                    f"wz={average_feedback[2]:+.4f} rad/s"
+                )
+            else:
+                print("稳定段平均反馈: 无有效样本（检查 VESC/IMU 在线状态）")
+            print(f"cmd_vel 周期重发次数: {car.continuous_refresh_tx_count}")
+            car.stop_v2()
+            time.sleep(args.settle)
+            print_state(car, "联合速度测试后", verbose)
 
         # ---- 速度测试 ----
         if args.only in ("all", "speed"):

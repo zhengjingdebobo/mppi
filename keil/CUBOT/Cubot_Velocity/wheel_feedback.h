@@ -19,4 +19,12 @@ typedef enum
  */
 uint8_t WheelFeedback_GetRPM(float wheel_rpm[WHEEL_INDEX_COUNT]);
 
+/*
+ * 同时返回逐轮有效位：bit0/1/2/3 分别对应 LF/RF/LB/RB。
+ * 函数返回 1 仍表示四轮全部在线。
+ */
+uint8_t WheelFeedback_GetRPMWithValidMask(
+    float wheel_rpm[WHEEL_INDEX_COUNT],
+    uint8_t *valid_mask);
+
 #endif /* WHEEL_FEEDBACK_H */

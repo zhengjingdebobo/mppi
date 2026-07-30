@@ -2,7 +2,7 @@
 #define STATE_ESTIMATOR_H
 
 #include "imu_state.h"
-#include "mecanum_kinematics.h"
+#include "chassis_feedback.h"
 
 #include <stdint.h>
 
@@ -14,7 +14,6 @@ typedef enum
 
 typedef struct
 {
-    float gyro_weight;
     float min_dt_s;
     float max_dt_s;
 } StateEstimatorParam_t;
@@ -33,7 +32,8 @@ typedef struct RobotState
 void StateEstimator_Init(const StateEstimatorParam_t *param);
 void StateEstimator_Reset(void);
 
-uint8_t StateEstimator_Update(const WheelVelocity_t *wheel_velocity,
+uint8_t StateEstimator_Update(
+                              const ChassisVelocityFeedback_t *feedback,
                               const IMUState_t *imu,
                               float dt_s);
 

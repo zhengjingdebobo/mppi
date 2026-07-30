@@ -1892,6 +1892,16 @@
               <FilePath>..\CUBOT\Cubot_Velocity\chassis_velocity_config.h</FilePath>
             </File>
             <File>
+              <FileName>chassis_feedback.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\CUBOT\Cubot_Velocity\chassis_feedback.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_feedback.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\CUBOT\Cubot_Velocity\chassis_feedback.h</FilePath>
+            </File>
+            <File>
               <FileName>mecanum_kinematics.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\CUBOT\Cubot_Velocity\mecanum_kinematics.c</FilePath>

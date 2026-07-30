@@ -9,6 +9,15 @@
  */
 uint8_t WheelFeedback_GetRPM(float wheel_rpm[WHEEL_INDEX_COUNT])
 {
+    return WheelFeedback_GetRPMWithValidMask(wheel_rpm, 0);
+}
+
+uint8_t WheelFeedback_GetRPMWithValidMask(
+    float wheel_rpm[WHEEL_INDEX_COUNT],
+    uint8_t *valid_mask)
+{
+    uint8_t mask = 0u;
+
     if (wheel_rpm == 0) return 0u;
 
     wheel_rpm[WHEEL_INDEX_LF] =
@@ -24,5 +33,15 @@ uint8_t WheelFeedback_GetRPM(float wheel_rpm[WHEEL_INDEX_COUNT])
         (float)VESCMotorGetLogicalFeedbackERPM(VESC_WHEEL_RB) *
         MECANUM_FEEDBACK_SIGN_RB;
 
-    return VESCMotorAllFeedbackOnline();
+    if (VESCMotorLogicalFeedbackIsOnline(VESC_WHEEL_LF))
+        mask |= (uint8_t)(1u << WHEEL_INDEX_LF);
+    if (VESCMotorLogicalFeedbackIsOnline(VESC_WHEEL_RF))
+        mask |= (uint8_t)(1u << WHEEL_INDEX_RF);
+    if (VESCMotorLogicalFeedbackIsOnline(VESC_WHEEL_LB))
+        mask |= (uint8_t)(1u << WHEEL_INDEX_LB);
+    if (VESCMotorLogicalFeedbackIsOnline(VESC_WHEEL_RB))
+        mask |= (uint8_t)(1u << WHEEL_INDEX_RB);
+
+    if (valid_mask != 0) *valid_mask = mask;
+    return (mask == (uint8_t)((1u << WHEEL_INDEX_COUNT) - 1u)) ? 1u : 0u;
 }

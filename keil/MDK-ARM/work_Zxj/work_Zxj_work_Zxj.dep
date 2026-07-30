@@ -87,9 +87,9 @@ I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_modules/chassis.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 F (../Src/gpio.c)(0x6A67764B)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\gpio.o --omf_browse work_zxj\gpio.crf --depend work_zxj\gpio.d)
 I (../Inc/gpio.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
@@ -2090,8 +2090,8 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (..\CUBOT\Cubot_driver\drv_dwt.h)(0x6A67764A)
 I (..\CUBOT\Cubot_driver\drv_log.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 F (..\CUBOT\Cubot_driver\drv_iic.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\drv_iic.o --omf_browse work_zxj\drv_iic.crf --depend work_zxj\drv_iic.d)
 I (..\CUBOT\Cubot_driver\drv_iic.h)(0x6A67764A)
 F (..\CUBOT\Cubot_driver\drv_spi.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\drv_spi.o --omf_browse work_zxj\drv_spi.crf --depend work_zxj\drv_spi.d)
@@ -2406,8 +2406,8 @@ I (../CUBOT/Cubot_driver/drv_usart.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_driver/drv_log.h)(0x6A67764A)
-F (..\CUBOT\Cubot_devices\nx16.c)(0x6A696D56)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\nx16.o --omf_browse work_zxj\nx16.crf --depend work_zxj\nx16.d)
-I (..\CUBOT\Cubot_devices\nx16.h)(0x6A67764A)
+F (..\CUBOT\Cubot_devices\nx16.c)(0x6A6AB58F)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\nx16.o --omf_browse work_zxj\nx16.crf --depend work_zxj\nx16.d)
+I (..\CUBOT\Cubot_devices\nx16.h)(0x6A69BEA3)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x6A67764B)
 I (D:\keil\ARM\ARMCC\include\stddef.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
@@ -2486,14 +2486,16 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h)(0x6A67764B
 I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
-I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6999DB)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
+I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6A1810)
 I (../CUBOT/Cubot_Velocity/chassis_velocity.h)(0x6A6878FE)
-I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6872AA)
+I (../CUBOT/Cubot_Velocity/chassis_feedback.h)(0x6A6A180D)
 I (../CUBOT/Cubot_Velocity/mecanum_kinematics.h)(0x6A6964EF)
+I (../CUBOT/Cubot_Velocity/wheel_feedback.h)(0x6A6A180A)
+I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6A1809)
 I (../CUBOT/Cubot_Velocity/slip_detector.h)(0x6A6872AD)
-I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6872AB)
+I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6A18F4)
 I (../CUBOT/Cubot_Calibration/chassis_rpm_calibration.h)(0x6A697FB9)
 F (..\CUBOT\Cubot_devices\hwt101ct.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\hwt101ct.o --omf_browse work_zxj\hwt101ct.crf --depend work_zxj\hwt101ct.d)
 I (..\CUBOT\Cubot_devices\hwt101ct.h)(0x6A67764A)
@@ -2551,8 +2553,8 @@ I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
 I (../CUBOT/Cubot_driver/drv_usart.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_driver/drv_log.h)(0x6A67764A)
-F (..\CUBOT\Cubot_devices\hwt9053_can.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\hwt9053_can.o --omf_browse work_zxj\hwt9053_can.crf --depend work_zxj\hwt9053_can.d)
-I (..\CUBOT\Cubot_devices\hwt9053_can.h)(0x6A67764A)
+F (..\CUBOT\Cubot_devices\hwt9053_can.c)(0x6A6A1808)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\hwt9053_can.o --omf_browse work_zxj\hwt9053_can.crf --depend work_zxj\hwt9053_can.d)
+I (..\CUBOT\Cubot_devices\hwt9053_can.h)(0x6A6A1807)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
 I (../Inc/can.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
@@ -2598,7 +2600,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 I (../CUBOT/Cubot_driver/drv_can.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 F (..\CUBOT\Cubot_devices\odom_xdrive.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\odom_xdrive.o --omf_browse work_zxj\odom_xdrive.crf --depend work_zxj\odom_xdrive.d)
 I (..\CUBOT\Cubot_devices\odom_xdrive.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
@@ -2675,11 +2677,11 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h)(0x6A67764B
 I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 F (..\CUBOT\Cubot_devices_IMU\BMI088driver.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\bmi088driver.o --omf_browse work_zxj\bmi088driver.crf --depend work_zxj\bmi088driver.d)
 I (..\CUBOT\Cubot_devices_IMU\BMI088driver.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
@@ -3125,7 +3127,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 F (..\CUBOT\Cubot_devices_Motor\motor_task.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\motor_task.o --omf_browse work_zxj\motor_task.crf --depend work_zxj\motor_task.d)
 I (..\CUBOT\Cubot_devices_Motor\motor_task.h)(0x6A67764A)
-I (..\CUBOT\Cubot_devices_Motor\vesc_motor.h)(0x6A67764A)
+I (..\CUBOT\Cubot_devices_Motor\vesc_motor.h)(0x6A6AC327)
 I (../Inc/can.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x6A67764A)
@@ -3170,7 +3172,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 F (..\CUBOT\Cubot_devices_Motor\vesc_motor.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\vesc_motor.o --omf_browse work_zxj\vesc_motor.crf --depend work_zxj\vesc_motor.d)
-I (..\CUBOT\Cubot_devices_Motor\vesc_motor.h)(0x6A67764A)
+I (..\CUBOT\Cubot_devices_Motor\vesc_motor.h)(0x6A6AC327)
 I (../Inc/can.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x6A67764A)
@@ -3265,7 +3267,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 I (../CUBOT/Cubot_driver/drv_log.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdlib.h)(0x588B8344)
-F (..\CUBOT\Cubot_modules\chassis.c)(0x6A696CF6)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis.o --omf_browse work_zxj\chassis.crf --depend work_zxj\chassis.d)
+F (..\CUBOT\Cubot_modules\chassis.c)(0x6A6AB1E4)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis.o --omf_browse work_zxj\chassis.crf --depend work_zxj\chassis.d)
 I (..\CUBOT\Cubot_modules\chassis.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices/flysky_sbus.h)(0x6A67764A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x6A67764B)
@@ -3341,36 +3343,40 @@ I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_modules/chassis.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices/odom_xdrive.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 I (../CUBOT/Cubot_devices_Motor/motor_def.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_IMU/controller.h)(0x6A67764A)
 I (../CUBOT/Cubot_driver/drv_can.h)(0x6A67764A)
 I (..\MDK-ARM\path_tracker.h)(0x6A67764A)
 I (../CUBOT/Cubot_Velocity/mecanum_kinematics.h)(0x6A6964EF)
-I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6999DB)
+I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6A1810)
 I (../CUBOT/Cubot_Velocity/chassis_velocity.h)(0x6A6878FE)
-I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6872AA)
+I (../CUBOT/Cubot_Velocity/chassis_feedback.h)(0x6A6A180D)
+I (../CUBOT/Cubot_Velocity/wheel_feedback.h)(0x6A6A180A)
+I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6A1809)
 I (../CUBOT/Cubot_Velocity/slip_detector.h)(0x6A6872AD)
-I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6872AB)
+I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6A18F4)
 I (../CUBOT/Cubot_Calibration/chassis_rpm_calibration.h)(0x6A697FB9)
 F (..\CUBOT\Cubot_modules\holder.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\holder.o --omf_browse work_zxj\holder.crf --depend work_zxj\holder.d)
 I (..\CUBOT\Cubot_modules\holder.h)(0x6A67764A)
 F (..\CUBOT\Cubot_modules\shoot.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\shoot.o --omf_browse work_zxj\shoot.crf --depend work_zxj\shoot.d)
 I (..\CUBOT\Cubot_modules\shoot.h)(0x6A67764A)
-F (..\CUBOT\Cubot_Velocity\chassis_control.c)(0x6A6999DC)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis_control.o --omf_browse work_zxj\chassis_control.crf --depend work_zxj\chassis_control.d)
-I (..\CUBOT\Cubot_Velocity\chassis_control.h)(0x6A6999DB)
+F (..\CUBOT\Cubot_Velocity\chassis_control.c)(0x6A6A18F5)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis_control.o --omf_browse work_zxj\chassis_control.crf --depend work_zxj\chassis_control.d)
+I (..\CUBOT\Cubot_Velocity\chassis_control.h)(0x6A6A1810)
 I (..\CUBOT\Cubot_Velocity\chassis_velocity.h)(0x6A6878FE)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
-I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)
+I (..\CUBOT\Cubot_Velocity\chassis_feedback.h)(0x6A6A180D)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
+I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
 I (..\CUBOT\Cubot_Velocity\slip_detector.h)(0x6A6872AD)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6872AB)
+I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6A18F4)
 I (../CUBOT/Cubot_modules/chassis.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices/flysky_sbus.h)(0x6A67764A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x6A67764B)
@@ -3444,21 +3450,22 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h)(0x6A67764B
 I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
-I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A69A6E2)
+I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)
 I (..\CUBOT\Cubot_Velocity\rpm_compensation.h)(0x6A699980)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
-I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6872A6)
-F (..\CUBOT\Cubot_Velocity\chassis_control.h)(0x6A6999DB)()
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
+F (..\CUBOT\Cubot_Velocity\chassis_control.h)(0x6A6A1810)()
 F (..\CUBOT\Cubot_Velocity\chassis_velocity.c)(0x6A69A4C0)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis_velocity.o --omf_browse work_zxj\chassis_velocity.crf --depend work_zxj\chassis_velocity.d)
 I (..\CUBOT\Cubot_Velocity\chassis_velocity.h)(0x6A6878FE)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
-I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A69A6E2)
-I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6872AB)
-I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)
+I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)
+I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6A18F4)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
+I (..\CUBOT\Cubot_Velocity\chassis_feedback.h)(0x6A6A180D)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
+I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x6A67764B)
 I (D:\keil\ARM\ARMCC\include\stddef.h)(0x588B8344)
 I (../Inc/FreeRTOSConfig.h)(0x6A67764A)
@@ -3512,18 +3519,67 @@ I (D:\keil\ARM\ARMCC\include\float.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\math.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
 F (..\CUBOT\Cubot_Velocity\chassis_velocity.h)(0x6A6878FE)()
-F (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A69A6E2)()
+F (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)()
+F (..\CUBOT\Cubot_Velocity\chassis_feedback.c)(0x6A6A180E)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\chassis_feedback.o --omf_browse work_zxj\chassis_feedback.crf --depend work_zxj\chassis_feedback.d)
+I (..\CUBOT\Cubot_Velocity\chassis_feedback.h)(0x6A6A180D)
+I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
+I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
+I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)
+I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x6A67764A)
+I (../Inc/stm32f4xx_hal_conf.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h)(0x6A67764A)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h)(0x6A67764A)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f407xx.h)(0x6A67764A)
+I (../Drivers/CMSIS/Include/core_cm4.h)(0x6A67764A)
+I (../Drivers/CMSIS/Include/cmsis_version.h)(0x6A67764A)
+I (../Drivers/CMSIS/Include/cmsis_compiler.h)(0x6A67764A)
+I (../Drivers/CMSIS/Include/cmsis_armcc.h)(0x6A67764A)
+I (../Drivers/CMSIS/Include/mpu_armv7.h)(0x6A67764A)
+I (../Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h)(0x6A67764A)
+I (D:\keil\ARM\ARMCC\include\stddef.h)(0x588B8344)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_exti.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_cortex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_adc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_adc_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_can.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_crc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dac.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dac_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_flash_ramfunc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rng.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rtc.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rtc_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
+I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
+I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
+F (..\CUBOT\Cubot_Velocity\chassis_feedback.h)(0x6A6A180D)()
 F (..\CUBOT\Cubot_Velocity\mecanum_kinematics.c)(0x6A6964EF)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\mecanum_kinematics.o --omf_browse work_zxj\mecanum_kinematics.crf --depend work_zxj\mecanum_kinematics.d)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\math.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
 F (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)()
-F (..\CUBOT\Cubot_Velocity\wheel_feedback.c)(0x6A6964F1)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\wheel_feedback.o --omf_browse work_zxj\wheel_feedback.crf --depend work_zxj\wheel_feedback.d)
-I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6872A6)
+F (..\CUBOT\Cubot_Velocity\wheel_feedback.c)(0x6A6A180B)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\wheel_feedback.o --omf_browse work_zxj\wheel_feedback.crf --depend work_zxj\wheel_feedback.d)
+I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
-I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A69A6E2)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 I (../Inc/can.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x6A67764A)
@@ -3566,7 +3622,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
-F (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6872A6)()
+F (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)()
 F (..\CUBOT\Cubot_Velocity\rpm_compensation.c)(0x6A699A01)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\rpm_compensation.o --omf_browse work_zxj\rpm_compensation.crf --depend work_zxj\rpm_compensation.d)
 I (..\CUBOT\Cubot_Velocity\rpm_compensation.h)(0x6A699980)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
@@ -3575,11 +3631,11 @@ I (D:\keil\ARM\ARMCC\include\float.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\math.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
 F (..\CUBOT\Cubot_Velocity\rpm_compensation.h)(0x6A699980)()
-F (..\CUBOT\Cubot_Velocity\imu_state.c)(0x6A6876E0)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\imu_state.o --omf_browse work_zxj\imu_state.crf --depend work_zxj\imu_state.d)
-I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)
+F (..\CUBOT\Cubot_Velocity\imu_state.c)(0x6A6A180A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\imu_state.o --omf_browse work_zxj\imu_state.crf --depend work_zxj\imu_state.d)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
-I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A69A6E2)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (..\CUBOT\Cubot_Velocity\chassis_velocity_config.h)(0x6A6ACD36)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
 I (../Inc/main.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x6A67764A)
@@ -3623,18 +3679,20 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
-F (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)()
-F (..\CUBOT\Cubot_Velocity\state_estimator.c)(0x6A6872AC)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\state_estimator.o --omf_browse work_zxj\state_estimator.crf --depend work_zxj\state_estimator.d)
-I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6872AB)
-I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)
+F (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)()
+F (..\CUBOT\Cubot_Velocity\state_estimator.c)(0x6A6A18F5)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\state_estimator.o --omf_browse work_zxj\state_estimator.crf --depend work_zxj\state_estimator.d)
+I (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6A18F4)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
+I (..\CUBOT\Cubot_Velocity\chassis_feedback.h)(0x6A6A180D)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
+I (..\CUBOT\Cubot_Velocity\wheel_feedback.h)(0x6A6A180A)
 I (D:\keil\ARM\ARMCC\include\math.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
-F (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6872AB)()
+F (..\CUBOT\Cubot_Velocity\state_estimator.h)(0x6A6A18F4)()
 F (..\CUBOT\Cubot_Velocity\slip_detector.c)(0x6A687331)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\slip_detector.o --omf_browse work_zxj\slip_detector.crf --depend work_zxj\slip_detector.d)
 I (..\CUBOT\Cubot_Velocity\slip_detector.h)(0x6A6872AD)
-I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6872AA)
+I (..\CUBOT\Cubot_Velocity\imu_state.h)(0x6A6A1809)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
 I (..\CUBOT\Cubot_Velocity\mecanum_kinematics.h)(0x6A6964EF)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
@@ -3696,7 +3754,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 I (../Inc/usart.h)(0x6A67764A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/task.h)(0x6A67764B)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/list.h)(0x6A67764B)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
 I (../Inc/can.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\string.h)(0x588B8344)
@@ -3751,7 +3809,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x6A67764A)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x6A67764A)
 F (.\path_tracker.c)(0x6A67764A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\path_tracker.o --omf_browse work_zxj\path_tracker.crf --depend work_zxj\path_tracker.d)
 I (path_tracker.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x6A67764B)
 I (D:\keil\ARM\ARMCC\include\stddef.h)(0x588B8344)
 I (D:\keil\ARM\ARMCC\include\stdint.h)(0x588B8344)
@@ -3827,7 +3885,7 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h)(0x6A67764B
 I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
 I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
 I (D:\keil\ARM\ARMCC\include\stdio.h)(0x588B8344)
 F (.\path_tracker.h)(0x6A67764A)()
@@ -3907,9 +3965,9 @@ I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_modules/chassis.h)(0x6A67764A)
 I (../CUBOT/Cubot_User_Config/hardware_config.h)(0x6A67764A)
 I (../CUBOT/Cubot_User_Config/control_logic.h)(0x6A688174)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
 F (..\CUBOT\Cubot_User_Config\hardware_config.c)(0x6A696CF5)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O1 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../Middlewares/ST/ARM/DSP/Inc -I ../CUBOT/Cubot_algorithm -I ../CUBOT/Cubot_devices -I ../CUBOT/Cubot_driver -I ../CUBOT/Cubot_modules -I ../CUBOT/Cubot_UI -I ../CUBOT/Cubot_User_Config -I ../CUBOT/Cubot_vision -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../CUBOT/Cubot_devices_IMU -I ../CUBOT/Cubot_devices_daemon -I ../CUBOT/Cubot_devices_Motor -I ../CUBOT/Cubot_Velocity -I ../CUBOT/Cubot_Calibration -I ../CUBOT\Cubot_devices -I ..\Cubot\Algorithm -I ..\MDK-ARM -I ..\CUBOT\Cubot_algorithm-I.\RTE\_work_Zxj-ID:\keil\ARM\PACK\ARM\CMSIS\6.3.0\CMSIS\Core\Include-ID:\keil\ARM\PACK\Keil\STM32F4xx_DFP\2.17.1\Drivers\CMSIS\Device\ST\STM32F4xx\Include-D__UVISION_VERSION="543" -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx -DARM_MATH_CM4-o work_zxj\hardware_config.o --omf_browse work_zxj\hardware_config.crf --depend work_zxj\hardware_config.d)
 I (..\CUBOT\Cubot_User_Config\hardware_config.h)(0x6A67764A)
@@ -3987,16 +4045,18 @@ I (../CUBOT/Cubot_devices_Motor/motor_task.h)(0x6A67764A)
 I (../CUBOT/Cubot_devices_daemon/daemon.h)(0x6A67764A)
 I (../CUBOT/Cubot_modules/chassis.h)(0x6A67764A)
 I (../CUBOT/Cubot_User_Config/hardware_config.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices/nx16.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/nx16.h)(0x6A69BEA3)
 I (D:\keil\ARM\ARMCC\include\stdbool.h)(0x588B8344)
-I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A67764A)
+I (../CUBOT/Cubot_devices/hwt9053_can.h)(0x6A6A1807)
 I (../Inc/can.h)(0x6A67764A)
-I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A67764A)
-I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6999DB)
+I (../CUBOT/Cubot_devices_Motor/vesc_motor.h)(0x6A6AC327)
+I (../CUBOT/Cubot_Velocity/chassis_control.h)(0x6A6A1810)
 I (../CUBOT/Cubot_Velocity/chassis_velocity.h)(0x6A6878FE)
-I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6872AA)
+I (../CUBOT/Cubot_Velocity/chassis_feedback.h)(0x6A6A180D)
 I (../CUBOT/Cubot_Velocity/mecanum_kinematics.h)(0x6A6964EF)
+I (../CUBOT/Cubot_Velocity/wheel_feedback.h)(0x6A6A180A)
+I (../CUBOT/Cubot_Velocity/imu_state.h)(0x6A6A1809)
 I (../CUBOT/Cubot_Velocity/slip_detector.h)(0x6A6872AD)
-I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6872AB)
+I (../CUBOT/Cubot_Velocity/state_estimator.h)(0x6A6A18F4)
 I (../CUBOT/Cubot_Calibration/chassis_rpm_calibration.h)(0x6A697FB9)
 F (../Middlewares/ST/ARM/DSP/Lib/arm_cortexM4l_math.lib)(0x6A67764B)()

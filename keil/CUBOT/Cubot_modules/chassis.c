@@ -542,9 +542,9 @@ ChassisApiResult_e ChassisRotateAtSpeed(ChassisRotateDir_e dir, float angular_sp
         ChassisClearApiCommand();
         Chassis_ResetRotateRateControl();
     }
-    /* HWT9053 当前实车约定：物理左转 gyro_z 为负，物理右转为正。 */
+    /* 统一车体系约定：物理左转 gyro_z/目标为正，物理右转为负。 */
     rotate_rate_target_dps = (dir == CHASSIS_ROTATE_LEFT) ?
-                             -angular_speed_dps : angular_speed_dps;
+                             angular_speed_dps : -angular_speed_dps;
     chassis_api_mode = CHASSIS_API_MODE_ROTATE_VELOCITY;
     move_direct_wheel_mode = 1u;
     nx16_ctrl.InTask = 0u;

@@ -82,6 +82,10 @@ void HWT9053CAN_SetYawZero(void);
 uint8_t HWT9053CAN_IsOnline(void);
 uint8_t HWT9053CAN_GetHeading(HWT9053Heading_t *heading);
 uint8_t HWT9053CAN_GetYawTotalDeg(float *yaw_total_deg);
+/* 只要求 gyro_z 新鲜，不依赖 yaw/acc 数据，用于车体角速度反馈。 */
+uint8_t HWT9053CAN_GetGyroZDps(float *gyro_z_dps,
+                              uint32_t *sample_count,
+                              uint32_t *last_tick);
 
 void HWT9053CAN_RecordRaw(CAN_HandleTypeDef *hcan,
                           const CAN_RxHeaderTypeDef *rx_header,
