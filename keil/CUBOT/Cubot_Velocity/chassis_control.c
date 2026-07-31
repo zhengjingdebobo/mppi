@@ -262,12 +262,14 @@ static ChassisVelocityExitReason_e ChassisControl_RunVelocityChain(void)
     g_chassis_velocity_debug.robot_state = chassis_robot_state;
 
     if (!ChassisVelocity_Update(&chassis_robot_state,
-                                CHASSIS_VELOCITY_CONTROL_PERIOD_S,
-                                &control_velocity))
+                                 CHASSIS_VELOCITY_CONTROL_PERIOD_S,
+                                 &control_velocity))
     {
         return CHASSIS_VELOCITY_EXIT_COMMAND_TIMEOUT;
     }
     g_chassis_velocity_debug.cmd_output = control_velocity;
+    ChassisVelocity_GetControllerDebug(
+        &g_chassis_velocity_debug.velocity_controller);
 
     MecanumKinematics_Inverse(control_velocity.vx_mps,
                                control_velocity.vy_mps,

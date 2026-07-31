@@ -14,6 +14,25 @@ typedef struct
     uint32_t update_tick_ms;
 } ChassisVelocity_t;
 
+/* Keil Watch 使用的平移 PI 内部状态；不参与控制接口传输。 */
+typedef struct
+{
+    ChassisVelocity_t reference;
+    float error_vx_mps;
+    float error_vy_mps;
+    float integral_vx_mps;
+    float integral_vy_mps;
+    float correction_vx_mps;
+    float correction_vy_mps;
+    float heading_target_rad;
+    float heading_error_rad;
+    float heading_correction_wz_radps;
+    uint8_t active;
+    uint8_t saturated;
+    uint8_t heading_hold_active;
+    uint8_t heading_hold_saturated;
+} ChassisVelocityControllerDebug_t;
+
 /* 初始化速度命令和斜率限制器。 */
 void ChassisVelocity_Init(void);
 
@@ -34,11 +53,15 @@ void ChassisVelocity_NotifyHeartbeatFromISR(void);
 
 /*
  * 周期更新速度控制器。
- * 第一版只实现限幅和加减速限制，后续可在此加入车体速度闭环。
+ * 先生成加减速受限参考值，再根据配置决定是否叠加 vx/vy PI 修正。
  */
 uint8_t ChassisVelocity_Update(const struct RobotState *state,
                                float dt_s,
                                ChassisVelocity_t *output);
+
+/* 读取参考速度、误差、积分和修正量，供 Keil Watch 调试。 */
+void ChassisVelocity_GetControllerDebug(
+    ChassisVelocityControllerDebug_t *debug);
 
 /* 清零速度控制器，并释放新速度链的控制请求。 */
 void ChassisVelocity_Stop(void);

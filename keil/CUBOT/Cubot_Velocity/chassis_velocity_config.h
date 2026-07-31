@@ -50,6 +50,35 @@
  */
 #define CHASSIS_VELOCITY_MAX_ANG_ACCEL_RADPS2   1.50f
 
+/*
+ * ======================= 车体平移速度 PI 闭环 =======================
+ *
+ * 第一轮调试必须保持为 0：先用上位机同时记录“PC目标、STM32 cmd_output、
+ * 车体反馈”三条曲线，排除命令或反馈遥测延迟。确认反馈与实车同步后改为 1。
+ *
+ * PI 只修正 vx/vy；wz 的直线航向保持由下方独立 PD 配置控制。低于连续稳定车速时禁用 PI，
+ * 避免电机死区造成积分反复累积。修正量和积分均有限幅，最终输出仍受
+ * CHASSIS_VELOCITY_MAX_TRANSLATION_MPS 与单轮 ERPM 安全上限保护。
+ */
+#define CHASSIS_TRANSLATION_PI_ENABLE               1u
+#define CHASSIS_TRANSLATION_PI_KP                    0.12f
+#define CHASSIS_TRANSLATION_PI_KI                    0.02f
+#define CHASSIS_TRANSLATION_PI_MIN_SPEED_MPS         0.080f
+#define CHASSIS_TRANSLATION_PI_INTEGRAL_LIMIT_MPS    0.080f
+#define CHASSIS_TRANSLATION_PI_CORRECTION_LIMIT_MPS  0.120f
+
+/*
+ * 直线平移航向保持：
+ * 平移且上层没有主动旋转指令时，锁存当前 IMU 航向并进行 PD 修正。
+ * 参数先保持保守，最大修正限制为约 3.4 deg/s，避免引入左右摆动。
+ */
+#define CHASSIS_HEADING_HOLD_ENABLE                   1u
+#define CHASSIS_HEADING_HOLD_MIN_SPEED_MPS            0.080f
+#define CHASSIS_HEADING_HOLD_WZ_DEADBAND_RADPS        0.010f
+#define CHASSIS_HEADING_HOLD_KP_RADPS_PER_RAD         1.00f
+#define CHASSIS_HEADING_HOLD_KD                       0.15f
+#define CHASSIS_HEADING_HOLD_MAX_CORRECTION_RADPS     0.060f
+
 /* 麦克纳姆/X-drive 几何与传动参数。 */
 /*
  * 2026-07-30 实车平移尺度标定：

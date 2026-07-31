@@ -6,6 +6,147 @@
 
 ## 2026-07-30 当前权威状态（下次从这里继续）
 
+### 2026-07-30 STATUS-only 串口诊断固件
+
+为定位速度测试中 STATUS 实收仅约 10 Hz、PC 时间轴与 STM32 遥测错位数秒的
+问题，当前待烧录固件临时只发送：
+
+```text
+STATUS 20 Hz × 86 B = 1720 byte/s
+VESC 详细串口帧：关闭
+IMU 详细串口帧：关闭
+```
+
+这只关闭上位机详细遥测，不影响 STM32 内部 200 Hz VESC CAN反馈、IMU读取、
+底盘控制和 PI 开关；`CHASSIS_TRANSLATION_PI_ENABLE` 仍保持 `0u`。烧录后使用
+`velocity_tracking_test.py --max-speed 0.20` 复测。若 STATUS 接近 20 Hz，
+问题位于混合遥测/TX DMA队列；若仍约 10 Hz，则继续检查 STATUS 调度、串口
+实际输出或 Python 解析。
+
+首轮 STATUS-only 实测已达到 `199帧/10秒 = 19.9Hz`，确认 STATUS调度、物理
+串口和 Python下行解析正常。速度测试同时显示 `STM32 cmd_output` 对 PC斜坡
+仍有台阶和升速延迟，而同帧车速反馈紧跟 `cmd_output`。下一诊断版暂时将
+STATUS 内三个旧 CAN统计字段改为 UART接收回调数、V2有效帧数、V2校验失败数，
+并由速度测试写入 CSV，用于定位 PC→STM32 命令丢帧位置。
+
+接收计数实测为 UART DMA/IDLE回调 `29.2Hz`、V2有效帧仅 `12.3Hz`、校验失败
+为零，确认数据在校验前丢失。根因是 `HAL_UARTEx_ReceiveToIdle_DMA` 的回调
+实际长度 `Size` 可能小于16字节，但旧驱动没有保存 Size，NX16层始终把缓冲区
+当作完整16字节帧解析。当前已在 USART实例中保存 `recv_data_len`，NX16层按
+实际长度跨回调重组8字节旧帧和16字节V2帧。第三个临时诊断字段改为流解析
+丢弃的无效字节数。
+
+分片重组修复后，V2有效帧恢复到 `28.1Hz`、流解析丢弃字节为零，但斜坡阶段
+仍出现旧速度值覆盖。速度测试主循环本身以20Hz发送，而 `CarController` 又会
+启动10Hz后台重发，形成两个发送源。现已为 `set_chassis_velocity` 增加
+`background_refresh` 参数；速度测试传 `False`，只保留主循环20Hz单一发送。
+
+单一20Hz发送复测后，V2有效指令稳定为 `20.0Hz`、流解析丢弃字节为零；
+`cmd_output >= 0.06m/s` 时实际速度相对 STM32输出的 MAE约 `0.0039m/s`，
+`0.20m/s`稳态误差约 `0.001～0.003m/s`。基线已具备弱PI对照条件，当前将
+`CHASSIS_TRANSLATION_PI_ENABLE` 改为 `1u`，保留 Kp=0.25、Ki=0.10、
+0.06m/s以下禁用PI、积分限幅和修正量限幅。
+
+弱PI首测实车出现轻微左右摇摆。CSV显示横向 `vy` RMS仅约 `0.002m/s`，但
+实际 `wz` RMS约 `0.90deg/s`、峰值约 `2.45deg/s`，属于偏航摆动；纵向整体
+MAE约 `0.0045m/s`，相比关闭PI的约 `0.0039m/s`没有改善。第二轮参数因此降为
+`Kp=0.12、Ki=0.02`，PI启用门槛提高到 `0.08m/s`，避免低速死区附近反复修正。
+
+### 2026-07-30 平移速度闭环调试框架（最新）
+
+针对速度斜坡测试中“PC 目标升高但实际反馈长期停在约 0.05 m/s，目标下降后
+反馈反而上升，目标归零后反馈仍非零”的异常，已开始接入 `vx/vy` 车体速度 PI。
+该现象暂时不能直接归因于控制器参数，因为旧图只包含 PC 目标和车体反馈，
+没有显示 STM32 真正采用的 `cmd_output`，且反馈表现疑似存在明显延迟。
+
+随后使用三曲线基线固件以 `0.20 m/s` 复测：
+
+```text
+PC Target：正常完成 0.01 → 0.20 → 0
+图中 STM32 cmd_output：长期停在 0.01
+图中 Actual speed：只显示约 0.03～0.05
+实车观察：车辆明确先增速，随后减速至零
+```
+
+CSV 中 `STM32 cmd_output` 和四轮目标都只有 `0/0.01` 两个取值，与实车运动
+矛盾，因此已经确认控制命令和实际执行链能够更新，异常来自上位机收到的旧
+STATUS 遥测积压，不能用该图调整 PI。
+
+旧 USART1 遥测负载为：
+
+```text
+STATUS 5Hz × 86B + VESC 5Hz × 78B + IMU 50Hz × 166B ≈ 9120 byte/s
+```
+
+在 115200 波特率的理论有效载荷约 `11520 byte/s` 下余量过小。当前已修改为：
+
+```text
+STATUS 20Hz + VESC 10Hz + IMU 20Hz ≈ 5820 byte/s
+```
+
+控制内部的四轮和 IMU 更新仍为 `200Hz`，只降低上位机诊断帧负载。Python
+串口监听也已改为不在阻塞 `read()` 期间持有发送锁，串口超时由 `50ms`
+降为 `10ms`。速度测试 CSV 新增 `status_frame_count/status_age_s`，结束时
+会打印 STATUS 实际接收频率；低于 `15Hz` 时明确警告本次曲线仍可能滞后。
+
+遥测修复后的最终基线固件保持 PI 关闭，构建结果 `0 Error(s), 4 Warning(s)`。
+下一步必须先重新烧录并重复 `--max-speed 0.20` 测试，确认 STATUS 接收接近
+`20Hz` 且三曲线与实车同步，再启用 PI。
+
+当前代码已经完成：
+
+```text
+加减速受限速度参考
+    + vx/vy PI 修正
+    + 低于 0.06 m/s 时自动禁用 PI 并清积分
+    + 积分限幅
+    + PI 总修正量限幅
+    + 最终平移合速度 0.50 m/s 限幅
+```
+
+`wz` 暂不进入闭环，继续使用现有前馈和 IMU 反馈诊断。PI 参数位于：
+
+```c
+/* chassis_velocity_config.h */
+#define CHASSIS_TRANSLATION_PI_ENABLE               0u
+#define CHASSIS_TRANSLATION_PI_KP                    0.25f
+#define CHASSIS_TRANSLATION_PI_KI                    0.10f
+#define CHASSIS_TRANSLATION_PI_MIN_SPEED_MPS         0.060f
+#define CHASSIS_TRANSLATION_PI_INTEGRAL_LIMIT_MPS    0.080f
+#define CHASSIS_TRANSLATION_PI_CORRECTION_LIMIT_MPS  0.120f
+```
+
+当前最终固件必须保持 `CHASSIS_TRANSLATION_PI_ENABLE=0u`。PI 打开和关闭两种
+编译分支均已通过 ARMCC；最终重新生成的基线 HEX 为关闭状态，构建结果
+`0 Error(s), 4 Warning(s)`，4 个警告均为既有旧式空参数声明。
+
+Keil Watch 可观察：
+
+```text
+g_chassis_velocity_debug.cmd_target
+g_chassis_velocity_debug.cmd_output
+g_chassis_velocity_debug.robot_state.vx/vy
+g_chassis_velocity_debug.velocity_controller.reference
+g_chassis_velocity_debug.velocity_controller.error_vx_mps/error_vy_mps
+g_chassis_velocity_debug.velocity_controller.integral_vx_mps/integral_vy_mps
+g_chassis_velocity_debug.velocity_controller.correction_vx_mps/correction_vy_mps
+g_chassis_velocity_debug.velocity_controller.active
+g_chassis_velocity_debug.velocity_controller.saturated
+```
+
+上位机速度斜坡 CSV 和绘图已增加第三条 `STM32 cmd_output`，现在可以同时比较：
+
+```text
+PC Target speed
+STM32 cmd_output
+Actual speed
+```
+
+下一步不是立即打开 PI，而是先烧录当前 PI 关闭的基线固件，以较低的
+`--max-speed 0.20` 重测，判断异常位于 PC→STM32 命令链、STM32→VESC 执行链，
+还是反馈/串口遥测链。确认实际反馈与实车运动同步后，再把 PI 宏改为 `1u`，
+保持当前保守初值从 `0.20 m/s` 开始调试。
+
 ### 2026-07-30 车体系速度反馈与实车尺度标定最终交接（最新权威状态）
 
 本节是本轮工作的最终结论。若下文关于 `vx/vy/wz` 反馈、轮径、旋转比例、

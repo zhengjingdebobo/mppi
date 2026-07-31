@@ -100,6 +100,8 @@ class CarController:
         
         self.listener_thread: Optional[threading.Thread] = None
         self.heartbeat_thread: Optional[threading.Thread] = None
+        self.status_frame_count = 0
+        self.status_last_pc_monotonic = 0.0
         self.continuous_command_active = threading.Event()
         self.heartbeat_period_s = 0.10
         # 标准 cmd_vel 采用周期发布：保存当前连续速度帧并由后台线程重发。
@@ -121,7 +123,7 @@ class CarController:
         kwargs = {
             "port": self.port,
             "baudrate": self.baudrate,
-            "timeout": 0.05,
+            "timeout": 0.01,
             "write_timeout": 1,
         }
         if os.name == "posix":
@@ -475,10 +477,13 @@ class CarController:
 
             while self.is_running:
                 try:
+                    # Windows 串口允许读写并行。不要在可能阻塞的 read() 期间
+                    # 持有发送锁，否则斜坡命令和高频遥测会互相饥饿。
                     with self.serial_lock:
-                        if not self.ser or not self.ser.is_open:
+                        ser = self.ser
+                        if not ser or not ser.is_open:
                             raise serial.SerialException("serial not connected")
-                        data = self.ser.read(self.ser.in_waiting or 1)
+                    data = ser.read(ser.in_waiting or 1)
                     if data:
                         #print(f"--- Received Raw Data: {data.hex()} ---")
                     
@@ -648,6 +653,8 @@ class CarController:
                 self.debug_cmd_vel_true[0] = fdb_vx
                 self.debug_cmd_vel_true[1] = fdb_vy
                 self.debug_cmd_vel_true[2] = fdb_wz
+                self.status_frame_count += 1
+                self.status_last_pc_monotonic = time.monotonic()
                 self.vesc_can_diag[0] = fifo0_cb
                 self.vesc_can_diag[1] = fifo1_cb
                 self.vesc_can_diag[4] = last_ext_id
@@ -919,6 +926,7 @@ class CarController:
         vx_mps: float,
         vy_mps: float,
         wz_radps: float,
+        background_refresh: bool = True,
     ) -> bool:
         """
         联合设置车体三轴定速度。
@@ -929,6 +937,10 @@ class CarController:
 
         三个分量由同一帧提交，支持边平移边旋转；固件仍会执行合速度、
         角速度、加减速度、RPM补偿和命令超时保护。
+
+        background_refresh=True 时后台线程以固定周期重发最近命令，适合普通
+        应用。已经自行周期发送的测试/控制循环应传 False，避免两个发送源
+        竞争并把较旧目标重新写回 STM32。
         """
         if not self._serial_is_open():
             self.listener_error = self.listener_error or "serial not connected"
@@ -940,7 +952,7 @@ class CarController:
             or abs(vy_mps) >= 1e-4
             or abs(wz_radps) >= 1e-4
         )
-        if ok and moving:
+        if ok and moving and background_refresh:
             self.continuous_refresh_tx_count = 0
             self._continuous_v2_command = (
                 self.CMD2_CHASSIS_VELOCITY,

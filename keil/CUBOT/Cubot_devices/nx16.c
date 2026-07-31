@@ -889,9 +889,13 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     y_converter.f = nx16_ctrl.current_y;
     yaw_converter.f = nx16_ctrl.current_yaw;
 
-    tar_x_converter.f = (float)CANGetHcan1Fifo0CallbackCount();
-    tar_y_converter.f = (float)CANGetHcan1Fifo1DispatchCount();
-    tar_yaw_converter.f = (float)CANGetLastExtId();
+    /*
+     * STATUS-only 诊断阶段临时复用三个旧 CAN 诊断字段，定位 PC->STM32
+     * 16 字节 V2 速度帧是否在 UART DMA 接收或协议校验阶段丢失。
+     */
+    tar_x_converter.f = (float)nx16_ctrl.rx_callback_count;
+    tar_y_converter.f = (float)nx16_ctrl.rx_valid_count;
+    tar_yaw_converter.f = (float)nx16_ctrl.rx_bad_head_count;
     
     if (ChassisControl_GetMode() == CHASSIS_CONTROL_MODE_VELOCITY)
     {
@@ -1146,16 +1150,87 @@ void SendIMUDataToAgent(UART_HandleTypeDef* UART_X)
 
     AgentTxWrite(UART_X, frame, IMU_FRAME_LEN);
 }
+static uint8_t agent_rx_stream[AGENT_RX_FRAME_LENGTH_MAX * 2u];
+static uint8_t agent_rx_stream_len = 0u;
+
+static void AgentRxDiscardPrefix(uint8_t count)
+{
+    if (count >= agent_rx_stream_len)
+    {
+        agent_rx_stream_len = 0u;
+        return;
+    }
+
+    memmove(agent_rx_stream,
+            &agent_rx_stream[count],
+            (size_t)(agent_rx_stream_len - count));
+    agent_rx_stream_len = (uint8_t)(agent_rx_stream_len - count);
+}
+
+static void AgentRxParseStream(void)
+{
+    uint8_t frame_len;
+
+    while (agent_rx_stream_len > 0u)
+    {
+        if (agent_rx_stream[0] == 0xABu)
+        {
+            if (agent_rx_stream_len < 2u) return;
+            if (agent_rx_stream[1] != 0xCDu)
+            {
+                nx16_ctrl.rx_bad_head_count++;
+                AgentRxDiscardPrefix(1u);
+                continue;
+            }
+            frame_len = AGENT_FRAME_LENGTH_V2;
+        }
+        else if (agent_rx_stream[0] == 0xAAu)
+        {
+            frame_len = AGENT_FRAME_LENGTH_LEGACY;
+        }
+        else
+        {
+            nx16_ctrl.rx_bad_head_count++;
+            AgentRxDiscardPrefix(1u);
+            continue;
+        }
+
+        if (agent_rx_stream_len < frame_len) return;
+        ParseAgentCommandAuto(agent_rx_stream);
+        AgentRxDiscardPrefix(frame_len);
+    }
+}
+
 static void Nx16BufferRxCallback(void)
 {
+    uint16_t rx_len;
+    uint16_t i;
+
     nx16_ctrl.rx_callback_count++;
+    rx_len = nx16_usart_instance->recv_data_len;
+    if (rx_len > nx16_usart_instance->recv_buff_size)
+    {
+        rx_len = nx16_usart_instance->recv_buff_size;
+    }
+
     if (ChassisRPMCalibration_TryParse(
             nx16_usart_instance->recv_buff,
-            nx16_usart_instance->recv_buff_size))
+            rx_len))
     {
         return;
     }
-    ParseAgentCommandAuto(nx16_usart_instance->recv_buff);
+
+    for (i = 0u; i < rx_len; i++)
+    {
+        if (agent_rx_stream_len >= sizeof(agent_rx_stream))
+        {
+            nx16_ctrl.rx_bad_head_count++;
+            AgentRxDiscardPrefix(1u);
+        }
+        agent_rx_stream[agent_rx_stream_len++] =
+            nx16_usart_instance->recv_buff[i];
+    }
+    AgentRxParseStream();
 }
 
 // 模块初始化函数

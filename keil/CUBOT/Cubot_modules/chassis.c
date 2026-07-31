@@ -1031,38 +1031,21 @@ static void LimitChassisOutput()
 static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
 {
     static uint32_t status_send_tick = 0u;
-    static uint32_t vesc_send_tick = 0u;
-    static uint64_t imu_send_us = 0u;
 
-    /* USART1 115200 baud (8N1 ≈ 11520 byte/s)。
-     * STATUS 5Hz (86B) + VESC 5Hz (78B) + IMU 50Hz (166B) ≈ 9120 byte/s。
+    /*
+     * STATUS-only 串口诊断固件：
+     *   STATUS 20 Hz × 86 B = 1720 byte/s。
+     *
+     * 暂停 VESC/IMU 详细串口遥测，用于判断之前约 10 Hz 的 STATUS 和数秒
+     * 时间错位是否由多种遥测帧混合发送或 TX DMA 队列造成。这里不影响
+     * STM32 内部 200 Hz 的 VESC CAN 反馈、IMU 数据读取和底盘控制。
      */
-    if (now_tick - status_send_tick >= 200u)
+    (void)now_us;
+
+    if (now_tick - status_send_tick >= 50u)
     {
         status_send_tick = now_tick;
         SendStatusAndOdometryToAgent(&AGENT_UART_HANDLE);
-    }
-
-    if (now_tick - vesc_send_tick >= 200u)
-    {
-        vesc_send_tick = now_tick;
-        SendVESCFeedbackToAgent(&AGENT_UART_HANDLE);
-    }
-
-    // 控制内部仍读取200Hz IMU；遥测 @50Hz 供上位机实时显示。
-    if (imu_send_us == 0u)
-    {
-        imu_send_us = now_us;
-        SendIMUDataToAgent(&AGENT_UART_HANDLE);
-    }
-    else if ((now_us - imu_send_us) >= 20000u)
-    {
-        do
-        {
-            imu_send_us += 20000u;
-        } while ((now_us - imu_send_us) >= 20000u);
-
-        SendIMUDataToAgent(&AGENT_UART_HANDLE);
     }
 }
 

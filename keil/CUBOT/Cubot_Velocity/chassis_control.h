@@ -44,6 +44,7 @@ typedef struct
     ChassisControlMode_e mode;
     ChassisVelocity_t cmd_target;
     ChassisVelocity_t cmd_output;
+    ChassisVelocityControllerDebug_t velocity_controller;
     float feedback_rpm[4];
     WheelVelocity_t wheel_velocity;
     ChassisVelocityFeedback_t feedback;
