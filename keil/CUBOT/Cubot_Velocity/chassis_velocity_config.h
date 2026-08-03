@@ -31,10 +31,11 @@
  *       VESC 电流、电机温度、麦轮打滑和制动距离。
  * 减小：可以统一降低所有方向的最高速度，不需要分别调整前后和横移参数。
  *
- * 当前 0.50 m/s 在最不利的 45° 方向补偿后约需 12080 ERPM，
- * 与下方 13000 ERPM 单轮保护上限配套使用。
+ * 当前 1.50 m/s 在最不利的 45° 方向补偿后约需 33750 ERPM；叠加
+ * 0.60 rad/s 最大旋转指令后约需 37100 ERPM，与下方 38000 ERPM
+ * 单轮保护上限配套使用。
  */
-#define CHASSIS_VELOCITY_MAX_TRANSLATION_MPS    0.50f
+#define CHASSIS_VELOCITY_MAX_TRANSLATION_MPS    1.50f
 /* 新速度入口的最高旋转速度；重载旋转不稳时降低该值。 */
 #define CHASSIS_VELOCITY_MAX_WZ_RADPS           0.60f
 /*
@@ -66,6 +67,16 @@
 #define CHASSIS_TRANSLATION_PI_MIN_SPEED_MPS         0.080f
 #define CHASSIS_TRANSLATION_PI_INTEGRAL_LIMIT_MPS    0.080f
 #define CHASSIS_TRANSLATION_PI_CORRECTION_LIMIT_MPS  0.120f
+
+/*
+ * 直线横向前馈：
+ * 2026-08-03 的 1.50 m/s 直线复测中，前进约 14.00 m 时车体向右偏约
+ * 0.077 m。仅在上层没有主动横移和旋转时，按 vx 的固定比例增加正 vy
+ * （向左）以抵消麦轮的系统性右滑；正反向运动时补偿符号随 vx 自动反转。
+ */
+#define CHASSIS_LATERAL_FEEDFORWARD_ENABLE             1u
+#define CHASSIS_LATERAL_FEEDFORWARD_RATIO              0.0043f
+#define CHASSIS_LATERAL_FEEDFORWARD_VY_DEADBAND_MPS    0.010f
 
 /*
  * 直线平移航向保持：
@@ -173,10 +184,10 @@
  * 并保证分段连接点连续。大于 1 提高该轮高转速输出，小于 1 则降低；
  * 1.0 表示不修正。
  */
-#define RPM_COMP_LINEAR_GAIN_LF                      1.004f
-#define RPM_COMP_LINEAR_GAIN_RF                      0.999f
-#define RPM_COMP_LINEAR_GAIN_LB                      1.024f
-#define RPM_COMP_LINEAR_GAIN_RB                      1.015f
+#define RPM_COMP_LINEAR_GAIN_LF                      1.001f
+#define RPM_COMP_LINEAR_GAIN_RF                      1.003f
+#define RPM_COMP_LINEAR_GAIN_LB                      1.021f
+#define RPM_COMP_LINEAR_GAIN_RB                      1.019f
 
 /*
  * 起转反馈阈值：
@@ -254,13 +265,14 @@
 /*
  * 补偿输出绝对上限：
  * 用于拦截异常参数或增益导致的过大指令，不能删除该安全保护。
- * 当前 13000 ERPM 可覆盖任意方向 0.50 m/s：最不利 45° 方向的
- * 补偿需求约为 12080 ERPM，并保留约 7.6% 余量。
+ * 当前 38000 ERPM 可覆盖任意方向 1.50 m/s：最不利 45° 方向的
+ * 纯平移补偿需求约为 33750 ERPM；叠加 0.60 rad/s 最大旋转指令后
+ * 约需 37100 ERPM，并保留少量余量。
  *
  * 如果以后增大 CHASSIS_VELOCITY_MAX_TRANSLATION_MPS，必须重新计算最不利
  * 方向的单轮需求，并通过电流、温升、打滑和制动测试后再提高本值。
  */
-#define RPM_COMP_MAX_OUTPUT_RPM                      13000.0f
+#define RPM_COMP_MAX_OUTPUT_RPM                      38000.0f
 
 /* 状态积分允许的周期范围。 */
 #define STATE_ESTIMATOR_MIN_DT_S                0.001f

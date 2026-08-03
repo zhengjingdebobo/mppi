@@ -120,7 +120,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="运动方向角：0=前，90=左，180=后，270=右",
     )
     parser.add_argument("--start-speed", type=float, default=0.06, help="正弦轨迹最低速度 m/s")
-    parser.add_argument("--max-speed", type=float, default=0.50, help="峰值速度 m/s，最大 0.50")
+    parser.add_argument(
+        "--max-speed",
+        type=float,
+        default=0.50,
+        help="峰值速度 m/s，默认 0.50，最大 1.50",
+    )
     parser.add_argument(
         "--sine-duration",
         type=float,
@@ -140,8 +145,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def validate_args(args: argparse.Namespace) -> None:
     if not 0.0 < args.start_speed <= args.max_speed:
         raise ValueError("必须满足 0 < --start-speed <= --max-speed")
-    if args.max_speed > 0.50:
-        raise ValueError("--max-speed 不能超过当前固件平移上限 0.50 m/s")
+    if args.max_speed > 1.50:
+        raise ValueError("--max-speed 不能超过当前固件平移上限 1.50 m/s")
     if args.sine_duration <= 0.0:
         raise ValueError("--sine-duration 必须大于 0")
     if not 1.0 <= args.sample_rate <= 100.0:

@@ -170,6 +170,21 @@ uint8_t ChassisVelocity_Update(const struct RobotState *state,
     if (output == 0 || dt_s <= 0.0f) return 0u;
     if (!ChassisVelocity_GetTarget(&target)) return 0u;
 
+#if CHASSIS_LATERAL_FEEDFORWARD_ENABLE
+    /*
+     * 轮速反馈无法观测麦轮相对地面的横向滑移，因此在纯直线命令上加入
+     * 小幅向左前馈。用户主动给出横移或旋转命令时不叠加该补偿。
+     */
+    if (fabsf(target.vy_mps) <
+            CHASSIS_LATERAL_FEEDFORWARD_VY_DEADBAND_MPS &&
+        fabsf(target.wz_radps) <
+            CHASSIS_HEADING_HOLD_WZ_DEADBAND_RADPS)
+    {
+        target.vy_mps +=
+            CHASSIS_LATERAL_FEEDFORWARD_RATIO * target.vx_mps;
+    }
+#endif
+
     /*
      * 所有平移方向共用同一个合速度上限。
      * vx、vy 必须按相同比例缩放，不能分别钳位，否则斜向超速时会改变方向。
