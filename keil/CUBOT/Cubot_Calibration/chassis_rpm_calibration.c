@@ -36,16 +36,18 @@ static CalibrationRPMTarget_t calibration_active_target;
 static char calibration_rx_line[CALIBRATION_LINE_MAX];
 static uint16_t calibration_rx_length;
 
+#if CHASSIS_DEBUG_MODE_VALUE == 1
 static int32_t CalibrationAbsI32(int32_t value)
 {
     if (value >= 0) return value;
     if (value == (int32_t)0x80000000) return 0x7FFFFFFF;
     return -value;
 }
+#endif
 
 static void CalibrationSetPending(CalibrationPendingCommand_e command)
 {
-#if CHASSIS_RPM_CALIBRATION_MODE
+#if CHASSIS_DEBUG_MODE_VALUE == 1
     __DMB();
     calibration_pending_command = command;
 #else
@@ -108,7 +110,7 @@ static void CalibrationDispatchLine(const char *line)
     {
         if (CalibrationParseSetRPM(line, &target))
         {
-#if CHASSIS_RPM_CALIBRATION_MODE
+#if CHASSIS_DEBUG_MODE_VALUE == 1
             calibration_pending_target.lf = target.lf;
             calibration_pending_target.rf = target.rf;
             calibration_pending_target.rb = target.rb;
@@ -178,6 +180,7 @@ uint8_t ChassisRPMCalibration_TryParse(const uint8_t *data,
     return 1u;
 }
 
+#if CHASSIS_DEBUG_MODE_VALUE == 1
 static void CalibrationClearTarget(void)
 {
     memset(&calibration_active_target, 0, sizeof(calibration_active_target));
@@ -300,6 +303,7 @@ static void CalibrationConsumePending(uint32_t now)
         break;
     }
 }
+#endif
 
 void ChassisRPMCalibration_Init(void)
 {
@@ -320,7 +324,7 @@ void ChassisRPMCalibration_Init(void)
 
 void ChassisRPMCalibration_Update(void)
 {
-#if CHASSIS_RPM_CALIBRATION_MODE
+#if CHASSIS_DEBUG_MODE_VALUE == 1
     uint32_t now = HAL_GetTick();
 
     CalibrationConsumePending(now);

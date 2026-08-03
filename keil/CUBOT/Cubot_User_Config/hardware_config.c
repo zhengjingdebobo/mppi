@@ -2,6 +2,7 @@
 #include "vesc_motor.h"
 #include "chassis_control.h"
 #include "chassis_rpm_calibration.h"
+#include "chassis_velocity_test.h"
 
 
 
@@ -53,6 +54,7 @@ void RobotInit()
     // 底盘初始化里会同时建好 VESC 输出链路和里程计兼容结构。
     ChassisInit();
     ChassisControl_Init();
+    ChassisVelocityTest_Init();
 
 
     OSTaskInit(); // 创建基础任务

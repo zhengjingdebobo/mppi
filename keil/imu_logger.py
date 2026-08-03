@@ -11,7 +11,7 @@ IMU_HEADER = b"\xAA\x55\x49"
 STATUS_HEADER = b"\xAA\xAA"
 IMU_FRAME_LEN = 138
 IMU_PAYLOAD_LEN = 132
-STATUS_FRAME_LEN = 86
+STATUS_FRAME_LEN = 94
 
 
 def parse_imu_frame(frame: bytes):

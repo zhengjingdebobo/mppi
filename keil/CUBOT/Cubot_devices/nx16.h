@@ -145,6 +145,9 @@ BrainCore_t *Nx16ControlInit(UART_HandleTypeDef *nx16_usart_handle);
 /* Execute validated V2 commands from the chassis task, never from UART IRQ context. */
 void Nx16ProcessPendingCommand(void);
 
+/* 内部测试模式只消费急停，所有 PC 运动目标保持隔离。 */
+uint8_t Nx16ProcessPendingEmergencyStop(void);
+
 /* Clear command de-duplication and path receive state during an explicit reset. */
 void Nx16ResetProtocolState(void);
 
@@ -157,6 +160,7 @@ uint8_t Nx16V2LinkIsAlive(uint32_t timeout_ms);
 void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X);
 void SendVESCFeedbackToAgent(UART_HandleTypeDef* UART_X);
 void SendIMUDataToAgent(UART_HandleTypeDef* UART_X);
+void SendChassisVelocityTestFeedbackToAgent(UART_HandleTypeDef* UART_X);
 
 
 

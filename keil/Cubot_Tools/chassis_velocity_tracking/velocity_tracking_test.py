@@ -56,6 +56,10 @@ from car_controlst import CarController  # noqa: E402
 CSV_FIELDS = (
     "pc_time",
     "elapsed_s",
+    "stm32_tick_ms",
+    "status_sequence",
+    "status_sequence_gap",
+    "status_transport_delay_s",
     "phase",
     "direction_deg",
     "target_speed_mps",
@@ -197,25 +201,26 @@ def wait_for_translation_feedback(car: CarController, timeout_s: float) -> None:
 
 
 def make_row(
-    car: CarController,
+    status_sample: Dict[str, object],
     elapsed_s: float,
     phase: str,
     direction_deg: float,
     target_speed: float,
     unit_x: float,
     unit_y: float,
+    status_sequence_gap: int,
+    status_transport_delay_s: float,
 ) -> Dict[str, object]:
-    with car.lock:
-        feedback = tuple(float(value) for value in car.chassis_velocity_feedback)
-        stm32_cmd = tuple(float(value) for value in car.debug_cmd_vel)
-        wheels = tuple(float(value) for value in car.debug_motro_vel)
-        status = int(car.current_status)
-        status_frame_count = int(car.status_frame_count)
-        status_last_pc_monotonic = float(car.status_last_pc_monotonic)
-        rx_diag = tuple(float(value) for value in car.debug_target)
-        odom_x = float(car.odom_x)
-        odom_y = float(car.odom_y)
-        odom_yaw = float(car.odom_yaw_deg)
+    feedback = tuple(float(value) for value in status_sample["feedback"])
+    stm32_cmd = tuple(float(value) for value in status_sample["stm32_cmd"])
+    wheels = tuple(float(value) for value in status_sample["wheels"])
+    status = int(status_sample["status"])
+    status_frame_count = int(status_sample["status_frame_count"])
+    status_received_monotonic = float(status_sample["pc_received_monotonic"])
+    rx_diag = tuple(float(value) for value in status_sample["rx_diag"])
+    odom_x, odom_y, odom_yaw = (
+        float(value) for value in status_sample["odom"]
+    )
 
     vx, vy, wz = feedback
     cmd_vx, cmd_vy, cmd_wz = stm32_cmd
@@ -227,11 +232,7 @@ def make_row(
         stm32_cmd_speed = float("nan")
         stm32_cmd_magnitude = float("nan")
     feedback_valid = math.isfinite(vx) and math.isfinite(vy)
-    status_age_s = (
-        max(0.0, time.monotonic() - status_last_pc_monotonic)
-        if status_last_pc_monotonic > 0.0
-        else float("nan")
-    )
+    status_age_s = max(0.0, time.monotonic() - status_received_monotonic)
     if feedback_valid:
         actual_speed = vx * unit_x + vy * unit_y
         actual_magnitude = math.hypot(vx, vy)
@@ -242,8 +243,14 @@ def make_row(
         speed_error = float("nan")
 
     return {
-        "pc_time": datetime.now().isoformat(timespec="milliseconds"),
+        "pc_time": datetime.fromtimestamp(
+            float(status_sample["pc_received_time"])
+        ).isoformat(timespec="milliseconds"),
         "elapsed_s": f"{elapsed_s:.6f}",
+        "stm32_tick_ms": int(status_sample["stm32_tick_ms"]),
+        "status_sequence": int(status_sample["status_sequence"]),
+        "status_sequence_gap": status_sequence_gap,
+        "status_transport_delay_s": f"{status_transport_delay_s:.6f}",
         "phase": phase,
         "direction_deg": f"{direction_deg:.6f}",
         "target_speed_mps": f"{target_speed:.6f}",
@@ -316,6 +323,20 @@ def run_test(args: argparse.Namespace) -> Path:
 
     car = CarController(port=args.port, baudrate=args.baudrate)
     row_count = 0
+    velocity_tx_count = 0
+    start_status_frame_count = 0
+    start_stm32_uart_rx_callback_count = 0
+    start_stm32_v2_valid_count = 0
+    start_stm32_rx_discarded_byte_count = 0
+    end_status_frame_count = 0
+    end_stm32_uart_rx_callback_count = 0
+    end_stm32_v2_valid_count = 0
+    end_stm32_rx_discarded_byte_count = 0
+    started_at = 0.0
+    test_finished_at = 0.0
+    status_sequence_gap_count = 0
+    max_status_transport_delay_s = 0.0
+    status_queue_drop_count = 0
     interrupted = False
     try:
         print(f"连接 {args.port} @ {args.baudrate} ...")
@@ -336,16 +357,97 @@ def run_test(args: argparse.Namespace) -> Path:
             print("\r开始速度跟随测试。                         ")
 
         period_s = 1.0 / args.sample_rate
-        started_at = time.monotonic()
-        start_status_frame_count = car.status_frame_count
-        next_tick = started_at
-        next_print = started_at
+        # 以一帧新 STATUS 作为 STM32/PC 时间轴锚点，排除测试前的积压帧。
+        car.clear_status_samples()
+        anchor_deadline = time.monotonic() + args.feedback_timeout
+        anchor_sample = None
+        while time.monotonic() < anchor_deadline:
+            samples = car.drain_status_samples()
+            if samples:
+                anchor_sample = samples[-1]
+                break
+            time.sleep(0.005)
+        if anchor_sample is None:
+            raise RuntimeError("等待新 STATUS 时间锚点超时")
+
+        started_at = float(anchor_sample["pc_received_monotonic"])
+        start_stm32_tick_ms = int(anchor_sample["stm32_tick_ms"])
+        last_status_sequence = int(anchor_sample["status_sequence"])
+        start_status_frame_count = int(anchor_sample["status_frame_count"])
+        anchor_rx_diag = tuple(float(value) for value in anchor_sample["rx_diag"])
+        start_stm32_uart_rx_callback_count = int(anchor_rx_diag[0])
+        start_stm32_v2_valid_count = int(anchor_rx_diag[1])
+        start_stm32_rx_discarded_byte_count = int(anchor_rx_diag[2])
+        car.clear_status_samples()
+        next_tick = time.monotonic()
+        next_print = next_tick
+        last_row = None
 
         with output.open("w", newline="", encoding="utf-8-sig") as fp:
             writer = csv.DictWriter(fp, fieldnames=CSV_FIELDS)
             writer.writeheader()
 
+            def write_pending_status() -> None:
+                nonlocal row_count
+                nonlocal last_row
+                nonlocal last_status_sequence
+                nonlocal status_sequence_gap_count
+                nonlocal max_status_transport_delay_s
+
+                for status_sample in car.drain_status_samples():
+                    stm32_tick_ms = int(status_sample["stm32_tick_ms"])
+                    status_elapsed_s = (
+                        (stm32_tick_ms - start_stm32_tick_ms) & 0xFFFFFFFF
+                    ) / 1000.0
+                    status_phase, status_target, status_finished = target_at_time(
+                        status_elapsed_s,
+                        args.start_speed,
+                        args.max_speed,
+                        args.sine_duration,
+                        args.start_hold,
+                        args.zero_hold,
+                    )
+                    if status_finished:
+                        status_phase = "finished"
+                        status_target = 0.0
+
+                    status_sequence = int(status_sample["status_sequence"])
+                    sequence_delta = (
+                        status_sequence - last_status_sequence
+                    ) & 0xFFFFFFFF
+                    sequence_gap = (
+                        max(0, sequence_delta - 1)
+                        if sequence_delta < 0x80000000
+                        else 0
+                    )
+                    status_sequence_gap_count += sequence_gap
+                    last_status_sequence = status_sequence
+
+                    transport_delay_s = (
+                        float(status_sample["pc_received_monotonic"])
+                        - started_at
+                        - status_elapsed_s
+                    )
+                    max_status_transport_delay_s = max(
+                        max_status_transport_delay_s,
+                        transport_delay_s,
+                    )
+                    last_row = make_row(
+                        status_sample,
+                        status_elapsed_s,
+                        status_phase,
+                        direction_deg,
+                        status_target,
+                        unit_x,
+                        unit_y,
+                        sequence_gap,
+                        transport_delay_s,
+                    )
+                    writer.writerow(last_row)
+                    row_count += 1
+
             while True:
+                write_pending_status()
                 now = time.monotonic()
                 elapsed_s = now - started_at
                 phase, target_speed, finished = target_at_time(
@@ -370,56 +472,74 @@ def run_test(args: argparse.Namespace) -> Path:
                     background_refresh=False,
                 ):
                     raise RuntimeError(f"速度命令发送失败: {car.listener_error or '未知错误'}")
-
-                row = make_row(
-                    car,
-                    elapsed_s,
-                    phase,
-                    direction_deg,
-                    target_speed,
-                    unit_x,
-                    unit_y,
-                )
-                writer.writerow(row)
-                row_count += 1
+                velocity_tx_count += 1
+                write_pending_status()
                 if row_count % max(1, round(args.sample_rate)) == 0:
                     fp.flush()
 
                 if now >= next_print:
                     actual_text = (
-                        f"{float(row['actual_speed_mps']):+.3f}"
-                        if row["feedback_valid"]
+                        f"{float(last_row['actual_speed_mps']):+.3f}"
+                        if last_row is not None and last_row["feedback_valid"]
                         else "NaN"
+                    )
+                    status_rx_count = (
+                        int(last_row["status_frame_count"])
+                        - start_status_frame_count
+                        if last_row is not None
+                        else 0
+                    )
+                    stm32_v2_rx_count = (
+                        int(float(last_row["stm32_v2_valid_count"]))
+                        - start_stm32_v2_valid_count
+                        if last_row is not None
+                        else 0
                     )
                     print(
                         f"t={elapsed_s:6.2f}s  {phase:9s}  "
-                        f"target={target_speed:+.3f}  actual={actual_text} m/s"
+                        f"target={target_speed:+.3f}  actual={actual_text} m/s  "
+                        f"TX={velocity_tx_count}  "
+                        f"STATUS_RX={status_rx_count}  "
+                        f"STM32_V2_RX={stm32_v2_rx_count}"
                     )
                     next_print = now + 0.5
 
                 next_tick += period_s
                 time.sleep(max(0.0, next_tick - time.monotonic()))
 
-            # 明确记录一个最终零目标样本。
-            car.set_chassis_velocity(0.0, 0.0, 0.0)
-            final_elapsed = time.monotonic() - started_at
-            writer.writerow(
-                make_row(
-                    car,
-                    final_elapsed,
-                    "finished",
-                    direction_deg,
-                    0.0,
-                    unit_x,
-                    unit_y,
-                )
-            )
-            row_count += 1
+            write_pending_status()
+            # 发送最终零目标，并等待包含该命令计数的 STATUS。
+            with car.lock:
+                stm32_v2_before_final = int(car.debug_target[1])
+            if not car.set_chassis_velocity(
+                0.0,
+                0.0,
+                0.0,
+                background_refresh=False,
+            ):
+                raise RuntimeError(f"最终停车速度命令发送失败: {car.listener_error or '未知错误'}")
+            velocity_tx_count += 1
+
+            # 等待诊断计数通过新 STATUS 回传，尽量包含最终零速命令。
+            status_deadline = time.monotonic() + max(0.20, 3.0 * period_s)
+            while time.monotonic() < status_deadline:
+                with car.lock:
+                    if int(car.debug_target[1]) > stm32_v2_before_final:
+                        break
+                time.sleep(0.005)
+            write_pending_status()
             fp.flush()
     except KeyboardInterrupt:
         interrupted = True
         print("\n用户中断，正在停车并保留已采集 CSV。")
     finally:
+        test_finished_at = time.monotonic()
+        with car.lock:
+            end_status_frame_count = int(car.status_frame_count)
+            end_stm32_uart_rx_callback_count = int(car.debug_target[0])
+            end_stm32_v2_valid_count = int(car.debug_target[1])
+            end_stm32_rx_discarded_byte_count = int(car.debug_target[2])
+            status_queue_drop_count = int(car.status_queue_drop_count)
         car.stop_v2()
         time.sleep(0.2)
         car.disconnect()
@@ -430,13 +550,55 @@ def run_test(args: argparse.Namespace) -> Path:
         raise RuntimeError("没有采集到数据，未保留空 CSV")
 
     print(f"已保存 {row_count} 个样本: {output.resolve()}")
-    status_delta = max(0, car.status_frame_count - start_status_frame_count)
-    test_elapsed_s = max(1.0e-6, time.monotonic() - started_at)
+    status_delta = max(0, end_status_frame_count - start_status_frame_count)
+    stm32_v2_valid_delta = max(
+        0,
+        end_stm32_v2_valid_count - start_stm32_v2_valid_count,
+    )
+    stm32_uart_rx_callback_delta = max(
+        0,
+        end_stm32_uart_rx_callback_count - start_stm32_uart_rx_callback_count,
+    )
+    stm32_rx_discarded_byte_delta = max(
+        0,
+        end_stm32_rx_discarded_byte_count
+        - start_stm32_rx_discarded_byte_count,
+    )
+    test_elapsed_s = max(1.0e-6, test_finished_at - started_at)
     status_rate_hz = status_delta / test_elapsed_s
+    print(f"速度指令发送: {velocity_tx_count} 次（PC 串口写入成功）")
     print(
         f"STATUS 接收: {status_delta} 帧，平均 {status_rate_hz:.1f} Hz"
         "（当前固件期望约 20 Hz）"
     )
+    print(
+        f"STM32 V2 有效接收: {stm32_v2_valid_delta} 次，"
+        f"与 PC 速度指令相差 "
+        f"{stm32_v2_valid_delta - velocity_tx_count:+d}"
+    )
+    print(
+        f"STM32 UART 接收回调: {stm32_uart_rx_callback_delta} 次，"
+        f"坏帧头/丢弃字节: {stm32_rx_discarded_byte_delta} 次"
+    )
+    print(
+        f"STATUS 序号缺口: {status_sequence_gap_count} 帧，"
+        f"PC 状态队列溢出: {status_queue_drop_count} 帧，"
+        f"最大相对传输延迟: {max_status_transport_delay_s:.3f} s"
+    )
+    if stm32_v2_valid_delta < velocity_tx_count:
+        print(
+            "警告：STM32 诊断中确认的 V2 帧少于 PC 成功写入数；"
+            "可能存在 PC->STM32 丢帧，也可能是最后一帧诊断回传滞后。"
+        )
+    elif stm32_v2_valid_delta == velocity_tx_count:
+        print("通讯诊断：本次速度指令均已被 STM32 有效接收。")
+    else:
+        print(
+            "通讯诊断：STM32 计数还包含测试窗口内的其他 V2 命令，"
+            "不能将超出部分当作重复回传。"
+        )
+    if stm32_rx_discarded_byte_delta > 0:
+        print("警告：STM32 串口解析器在测试期间丢弃过字节。")
     if status_rate_hz < 15.0:
         print("警告：STATUS 接收频率偏低，本次曲线可能仍有遥测滞后。")
     if interrupted:

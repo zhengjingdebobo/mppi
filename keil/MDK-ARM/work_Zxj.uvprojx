@@ -1892,6 +1892,11 @@
               <FilePath>..\CUBOT\Cubot_Velocity\chassis_velocity_config.h</FilePath>
             </File>
             <File>
+              <FileName>chassis_velocity_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\CUBOT\Cubot_Velocity\chassis_velocity_test.h</FilePath>
+            </File>
+            <File>
               <FileName>chassis_feedback.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\CUBOT\Cubot_Velocity\chassis_feedback.c</FilePath>
@@ -1961,6 +1966,11 @@
               <FileType>5</FileType>
               <FilePath>..\CUBOT\Cubot_Velocity\slip_detector.h</FilePath>
             </File>
+            <File>
+              <FileName>chassis_velocity_test.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\CUBOT\Cubot_Velocity\chassis_velocity_test.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -2020,6 +2030,11 @@
               <FileName>hardware_config.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\CUBOT\Cubot_User_Config\hardware_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_debug.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\CUBOT\Cubot_User_Config\chassis_debug.h</FilePath>
             </File>
           </Files>
         </Group>

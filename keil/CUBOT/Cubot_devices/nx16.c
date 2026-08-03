@@ -13,6 +13,7 @@
 #include "chassis_control.h"
 #include "chassis_feedback.h"
 #include "chassis_velocity.h"
+#include "chassis_velocity_test.h"
 #include "chassis_rpm_calibration.h"
 
 #define NX16_CRITICAL_ENTER()  taskENTER_CRITICAL()
@@ -30,6 +31,9 @@
 #define VESC_FRAME_LEN        78u
 #define AGENT_TX_QUEUE_SIZE   4096u
 #define AGENT_TX_DMA_CHUNK    256u
+#define VELOCITY_TEST_FRAME_TYPE        0x54u
+#define VELOCITY_TEST_FRAME_PAYLOAD_LEN 88u
+#define VELOCITY_TEST_FRAME_LEN         94u
 
 typedef struct {
     float x;
@@ -644,6 +648,20 @@ uint8_t Nx16V2LinkIsAlive(uint32_t timeout_ms)
     return ((uint32_t)(HAL_GetTick() - last_tick) <= timeout_ms) ? 1u : 0u;
 }
 
+uint8_t Nx16ProcessPendingEmergencyStop(void)
+{
+    uint8_t is_stop;
+
+    NX16_CRITICAL_ENTER();
+    is_stop = (agent_v2_pending.valid != 0u &&
+               agent_v2_pending.command_id == CMD2_STOP) ? 1u : 0u;
+    NX16_CRITICAL_EXIT();
+    if (!is_stop) return 0u;
+
+    Nx16ProcessPendingCommand();
+    return 1u;
+}
+
 void Nx16ProcessPendingCommand(void)
 {
     AgentV2PendingCommand_t pending;
@@ -866,12 +884,14 @@ static USARTInstance *nx16_usart_instance;
 //    HAL_UART_Transmit_DMA(UART_X,data_to_send_V6,_cnt);
 //}
 
-#define FRAME_LEN_EXT 86
+#define FRAME_LEN_EXT 94
 // 向 Python 上位机反馈机器人的实时状态
 void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
 {
     static uint8_t frame[FRAME_LEN_EXT];
+    static uint32_t status_sequence = 0u;
     ChassisVelocityFeedback_t velocity_feedback;
+    uint32_t status_tick_ms = HAL_GetTick();
 
     frame[0] = 0xAA;
     frame[1] = 0xAA;
@@ -989,6 +1009,14 @@ void SendStatusAndOdometryToAgent(UART_HandleTypeDef* UART_X)
     memcpy(&frame[76], fdb_vy_converter.bytes, 4); /* 车体系 vy，m/s */
     memcpy(&frame[80], fdb_wz_converter.bytes, 4); /* 车体系 wz，rad/s */
 
+    /*
+     * STM32 生成时间和单调帧序号用于区分真正丢帧与 PC 端批量解析。
+     * STM32 和当前 PC 解析端均为小端，与已有 float 字段的编码一致。
+     */
+    memcpy(&frame[84], &status_tick_ms, sizeof(status_tick_ms));
+    memcpy(&frame[88], &status_sequence, sizeof(status_sequence));
+    status_sequence++;
+
 
     uint8_t checksum = 0;
     for(int i = 2; i < FRAME_LEN_EXT - 2; i++) {
@@ -1043,6 +1071,84 @@ static void IMUFramePutI32(uint8_t *buf, uint8_t *idx, int32_t value)
     buf[(*idx)++] = (uint8_t)((value >> 8) & 0xFF);
     buf[(*idx)++] = (uint8_t)((value >> 16) & 0xFF);
     buf[(*idx)++] = (uint8_t)((value >> 24) & 0xFF);
+}
+
+static uint16_t VelocityTestCRC16CCITT(const uint8_t *data, uint16_t len)
+{
+    uint16_t crc = 0xFFFFu;
+    uint16_t i;
+    uint8_t bit;
+
+    for (i = 0u; i < len; i++)
+    {
+        crc ^= (uint16_t)data[i] << 8;
+        for (bit = 0u; bit < 8u; bit++)
+        {
+            crc = (crc & 0x8000u) ?
+                (uint16_t)((crc << 1) ^ 0x1021u) :
+                (uint16_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+void SendChassisVelocityTestFeedbackToAgent(UART_HandleTypeDef* UART_X)
+{
+    static uint8_t frame[VELOCITY_TEST_FRAME_LEN];
+    ChassisVelocityTestFeedback_t feedback;
+    uint16_t crc;
+    uint8_t flags = 0u;
+    uint8_t idx = 4u;
+
+    ChassisVelocityTest_GetFeedback(&feedback);
+    if (feedback.vesc_online) flags |= 0x01u;
+    if (feedback.imu_online) flags |= 0x02u;
+    if (feedback.rc_online) flags |= 0x04u;
+    if (feedback.control_valid) flags |= 0x08u;
+
+    frame[0] = 0xAAu;
+    frame[1] = 0x55u;
+    frame[2] = VELOCITY_TEST_FRAME_TYPE;
+    frame[3] = VELOCITY_TEST_FRAME_PAYLOAD_LEN;
+
+    IMUFramePutU32(frame, &idx, feedback.timestamp_ms);
+    frame[idx++] = feedback.test_mode;
+    frame[idx++] = feedback.test_state;
+    frame[idx++] = feedback.fault;
+    frame[idx++] = flags;
+
+    IMUFramePutFloat(frame, &idx, feedback.target_vx);
+    IMUFramePutFloat(frame, &idx, feedback.target_vy);
+    IMUFramePutFloat(frame, &idx, feedback.target_wz);
+    IMUFramePutFloat(frame, &idx, feedback.actual_vx);
+    IMUFramePutFloat(frame, &idx, feedback.actual_vy);
+    IMUFramePutFloat(frame, &idx, feedback.actual_wz);
+    IMUFramePutFloat(frame, &idx, feedback.vx_error);
+
+    IMUFramePutI32(frame, &idx, feedback.lf_target_rpm);
+    IMUFramePutI32(frame, &idx, feedback.lf_feedback_rpm);
+    IMUFramePutI32(frame, &idx, feedback.rf_target_rpm);
+    IMUFramePutI32(frame, &idx, feedback.rf_feedback_rpm);
+    IMUFramePutI32(frame, &idx, feedback.lb_target_rpm);
+    IMUFramePutI32(frame, &idx, feedback.lb_feedback_rpm);
+    IMUFramePutI32(frame, &idx, feedback.rb_target_rpm);
+    IMUFramePutI32(frame, &idx, feedback.rb_feedback_rpm);
+
+    IMUFramePutFloat(frame, &idx, feedback.gyro_z);
+    IMUFramePutFloat(frame, &idx, feedback.yaw);
+    IMUFramePutFloat(frame, &idx, feedback.odom_x);
+    IMUFramePutFloat(frame, &idx, feedback.odom_y);
+    IMUFramePutFloat(frame, &idx, feedback.odom_yaw);
+
+    crc = VelocityTestCRC16CCITT(&frame[2],
+                                VELOCITY_TEST_FRAME_LEN - 4u);
+    frame[idx++] = (uint8_t)(crc & 0xFFu);
+    frame[idx++] = (uint8_t)(crc >> 8);
+
+    if (idx == VELOCITY_TEST_FRAME_LEN)
+    {
+        AgentTxWrite(UART_X, frame, VELOCITY_TEST_FRAME_LEN);
+    }
 }
 
 void SendVESCFeedbackToAgent(UART_HandleTypeDef* UART_X)

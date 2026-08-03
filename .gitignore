@@ -43,3 +43,12 @@ Thumbs.db
 # 压缩文件
 *.rar
 *.zip
+
+# Keil build output
+*.crf
+*.d
+*.lnp
+*.htm
+*.dep
+*.sct
+*.lst

@@ -68,7 +68,7 @@ from typing import Deque, Iterator, List, Optional, Tuple
 import serial
 
 
-STATUS_FRAME_LEN = 86
+STATUS_FRAME_LEN = 94
 STATUS_FRAME_HEADER = b"\xAA\xAA"
 STATUS_FRAME_TAIL = 0xDD
 
@@ -125,7 +125,7 @@ def parse_status_frame(frame: bytes) -> dict:
         raise ValueError("STATUS frame header error")
     if frame[-1] != STATUS_FRAME_TAIL:
         raise ValueError("STATUS frame tail error")
-    if checksum_u8(frame[2:84]) != frame[84]:
+    if checksum_u8(frame[2:92]) != frame[92]:
         raise ValueError("STATUS frame checksum error")
 
     return {
@@ -151,6 +151,8 @@ def parse_status_frame(frame: bytes) -> dict:
         "dbg_lateral_vel": f32(frame, 72),
         "dbg_encoder_y": f32(frame, 76),
         "dbg_imu_y": f32(frame, 80),
+        "stm32_tick_ms": u32(frame, 84),
+        "sequence": u32(frame, 88),
     }
 
 

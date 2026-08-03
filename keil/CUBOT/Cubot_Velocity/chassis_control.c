@@ -1,6 +1,7 @@
 #include "chassis_control.h"
 
 #include "chassis.h"
+#include "chassis_debug.h"
 #include "chassis_feedback.h"
 #include "chassis_velocity.h"
 #include "chassis_velocity_config.h"
@@ -326,13 +327,29 @@ ChassisControlResult_e ChassisControl_Update(void)
      * 协议邮箱在唯一的 ChassisTask 上下文中只消费一次。
      * 遥控状态已经先更新，协议层可据此丢弃抢占期间的连续速度帧。
      */
-    Nx16ProcessPendingCommand();
+    if (CHASSIS_DEBUG_MODE == CHASSIS_DEBUG_VELOCITY_TEST)
+    {
+        (void)Nx16ProcessPendingEmergencyStop();
+        if (nx16_ctrl.RxFlag != 0u &&
+            nx16_ctrl.CommandID == CMD_STOP)
+        {
+            ChassisVelocity_Stop();
+            ChassisControl_RequestLegacyMode();
+            ChassisStopCommand();
+            nx16_ctrl.RxFlag = 0u;
+        }
+    }
+    else
+    {
+        Nx16ProcessPendingCommand();
+    }
 
     /*
      * 心跳有效性由协议层统一校验，刷新动作放在任务上下文完成。
      * 这样不会依赖“速度命令写入”和“UART 心跳中断”的先后时序。
      */
-    if (ChassisVelocity_IsControlRequested() &&
+    if (CHASSIS_DEBUG_MODE != CHASSIS_DEBUG_VELOCITY_TEST &&
+        ChassisVelocity_IsControlRequested() &&
         Nx16V2LinkIsAlive(CHASSIS_VELOCITY_COMMAND_TIMEOUT_MS))
     {
         ChassisVelocity_RefreshCommand();
@@ -395,7 +412,8 @@ ChassisControlResult_e ChassisControl_Update(void)
     }
 
     /* 旧 8 字节命令和路径命令保持走原 ChassisTask 状态机。 */
-    if (nx16_ctrl.RxFlag != 0u)
+    if (CHASSIS_DEBUG_MODE != CHASSIS_DEBUG_VELOCITY_TEST &&
+        nx16_ctrl.RxFlag != 0u)
     {
         ChassisControl_ExitVelocityMode(
             CHASSIS_VELOCITY_EXIT_LEGACY_COMMAND);

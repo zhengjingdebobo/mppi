@@ -1,13 +1,8 @@
 #ifndef CHASSIS_RPM_CALIBRATION_H
 #define CHASSIS_RPM_CALIBRATION_H
 
+#include "chassis_debug.h"
 #include <stdint.h>
-
-/*
- * 1：编译为专用 RPM 标定固件，ChassisTask 不运行正常底盘控制链。
- * 0：正常固件，原底盘任务保持不变，标定文本命令只会被识别并忽略。
- */
-#define CHASSIS_RPM_CALIBRATION_MODE             0u
 
 /* 标定安全参数。 */
 #define CHASSIS_RPM_CALIBRATION_MAX_ABS_RPM      2000
@@ -15,11 +10,6 @@
 #define CHASSIS_RPM_CALIBRATION_REQUIRE_RC       1u
 #define CHASSIS_RPM_CALIBRATION_RC_MOVE_DEADBAND 35
 #define CHASSIS_RPM_CALIBRATION_RC_YAW_DEADBAND  80
-
-#if (CHASSIS_RPM_CALIBRATION_MODE != 0u) && \
-    (CHASSIS_RPM_CALIBRATION_MODE != 1u)
-#error "CHASSIS_RPM_CALIBRATION_MODE must be 0 or 1"
-#endif
 
 typedef enum
 {

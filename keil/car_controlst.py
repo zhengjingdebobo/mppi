@@ -12,7 +12,9 @@ from typing import Optional, Tuple
 import asyncio
 import math
 import csv
+from collections import deque
 from datetime import datetime
+from typing import Deque, Dict, List
 
 
 class CarController:
@@ -102,6 +104,10 @@ class CarController:
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.status_frame_count = 0
         self.status_last_pc_monotonic = 0.0
+        self.status_stm32_tick_ms = 0
+        self.status_sequence = 0
+        self.status_queue_drop_count = 0
+        self._status_samples: Deque[Dict[str, object]] = deque(maxlen=4096)
         self.continuous_command_active = threading.Event()
         self.heartbeat_period_s = 0.10
         # 标准 cmd_vel 采用周期发布：保存当前连续速度帧并由后台线程重发。
@@ -471,7 +477,7 @@ class CarController:
             imu_header = self.IMU_FRAME_HEADER
             vesc_header = self.VESC_FRAME_HEADER
             trailer = b'\xDD'
-            status_frame_len = 86
+            status_frame_len = 94
             imu_frame_len = self.IMU_FRAME_LEN
             vesc_frame_len = self.VESC_FRAME_LEN
 
@@ -564,7 +570,7 @@ class CarController:
                 return
 
             try:
-                data = struct.unpack('<BB' + 'f'*20, payload)
+                data = struct.unpack('<BB' + 'f'*20 + 'II', payload)
             except struct.error:
                 return
 
@@ -588,6 +594,9 @@ class CarController:
             rb_fdb = data[18]
 
             fdb_vx, fdb_vy, fdb_wz = data[19], data[20], data[21]
+            stm32_tick_ms, status_sequence = data[22], data[23]
+            pc_received_monotonic = time.monotonic()
+            pc_received_time = time.time()
 
             if curr_yaw < 0:
                 curr_yaw += 360
@@ -654,7 +663,28 @@ class CarController:
                 self.debug_cmd_vel_true[1] = fdb_vy
                 self.debug_cmd_vel_true[2] = fdb_wz
                 self.status_frame_count += 1
-                self.status_last_pc_monotonic = time.monotonic()
+                self.status_last_pc_monotonic = pc_received_monotonic
+                self.status_stm32_tick_ms = stm32_tick_ms
+                self.status_sequence = status_sequence
+                if len(self._status_samples) == self._status_samples.maxlen:
+                    self.status_queue_drop_count += 1
+                self._status_samples.append({
+                    "pc_received_monotonic": pc_received_monotonic,
+                    "pc_received_time": pc_received_time,
+                    "stm32_tick_ms": stm32_tick_ms,
+                    "status_sequence": status_sequence,
+                    "status": status,
+                    "last_cmd_id": last_cmd_id,
+                    "odom": (curr_x, curr_y, curr_yaw),
+                    "rx_diag": (fifo0_cb, fifo1_cb, last_ext_id),
+                    "stm32_cmd": (cmd_vx, cmd_vy, cmd_wz),
+                    "wheels": (
+                        lf_ref, lf_fdb, rf_ref, rf_fdb,
+                        lb_ref, lb_fdb, rb_ref, rb_fdb,
+                    ),
+                    "feedback": (fdb_vx, fdb_vy, fdb_wz),
+                    "status_frame_count": self.status_frame_count,
+                })
                 self.vesc_can_diag[0] = fifo0_cb
                 self.vesc_can_diag[1] = fifo1_cb
                 self.vesc_can_diag[4] = last_ext_id
@@ -1086,6 +1116,19 @@ class CarController:
         with self.lock:
             feedback = self.chassis_velocity_feedback.copy()
         return feedback, bool(np.all(np.isfinite(feedback)))
+
+    def clear_status_samples(self) -> None:
+        """清空已排队的 STATUS 快照，不影响累计接收计数。"""
+        with self.lock:
+            self._status_samples.clear()
+            self.status_queue_drop_count = 0
+
+    def drain_status_samples(self) -> List[Dict[str, object]]:
+        """按 STM32 发送顺序取出自上次调用后的所有 STATUS 快照。"""
+        with self.lock:
+            samples = list(self._status_samples)
+            self._status_samples.clear()
+        return samples
 
     def get_last_imu(self) -> dict:
         with self.lock:

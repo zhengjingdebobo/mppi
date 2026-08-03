@@ -10,7 +10,9 @@
 #include "drv_dwt.h"
 #include "mecanum_kinematics.h"
 #include "chassis_control.h"
+#include "chassis_debug.h"
 #include "chassis_rpm_calibration.h"
+#include "chassis_velocity_test.h"
 #include <stdbool.h>  
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD 0.0174532925f
@@ -1034,7 +1036,7 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
 
     /*
      * STATUS-only 串口诊断固件：
-     *   STATUS 20 Hz × 86 B = 1720 byte/s。
+     *   STATUS 20 Hz × 94 B = 1880 byte/s。
      *
      * 暂停 VESC/IMU 详细串口遥测，用于判断之前约 10 Hz 的 STATUS 和数秒
      * 时间错位是否由多种遥测帧混合发送或 TX DMA 队列造成。这里不影响
@@ -1042,7 +1044,15 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
      */
     (void)now_us;
 
-    if (now_tick - status_send_tick >= 50u)
+    if (CHASSIS_DEBUG_MODE == CHASSIS_DEBUG_VELOCITY_TEST)
+    {
+        if (now_tick - status_send_tick >= 20u)
+        {
+            status_send_tick = now_tick;
+            SendChassisVelocityTestFeedbackToAgent(&AGENT_UART_HANDLE);
+        }
+    }
+    else if (now_tick - status_send_tick >= 50u)
     {
         status_send_tick = now_tick;
         SendStatusAndOdometryToAgent(&AGENT_UART_HANDLE);
@@ -1052,37 +1062,50 @@ static void IMU_data_send(uint32_t now_tick, uint64_t now_us)
 // ===============================ChassisTask====================================
 void ChassisTask()
 {
-#if !CHASSIS_RPM_CALIBRATION_MODE
     ChassisControlResult_e control_result;
-#endif
 
     // 先刷新位姿，再做控制解算，避免本周期使用过期状态
     App_TaskLoop();
 
-#if CHASSIS_RPM_CALIBRATION_MODE
-    /*
-     * 专用 RPM 标定固件：只允许标定模块写四轮目标。
-     * MotorControlTask 继续以 200 Hz 将目标发送到 VESC。
-     */
-    ChassisRPMCalibration_Update();
-#else
-    /*
-     * 唯一底盘任务中的统一仲裁：
-     * STOP     - 遥控器离线或新链故障，四轮目标清零；
-     * LEGACY   - 执行已有遥控/定距离/定角度控制；
-     * VELOCITY - 新速度链已经生成四轮目标，不再进入旧解算。
-     */
-    control_result = ChassisControl_Update();
-    if (control_result == CHASSIS_CONTROL_RESULT_STOP)
+    switch (CHASSIS_DEBUG_MODE)
     {
-        VESCMotorStopAll();
+    case CHASSIS_DEBUG_RPM_CALIBRATION:
+        /* RPM 标定是唯一允许直接生成四轮目标的专用模式。 */
+        ChassisRPMCalibration_Update();
+        break;
+
+    case CHASSIS_DEBUG_VELOCITY_TEST:
+        /*
+         * 测试模块只更新 vx/vy/wz；完整速度闭环仍保持 200 Hz。
+         * 测试模式不允许回退到旧控制链，任何非 VELOCITY 结果都停车。
+         */
+        ChassisVelocityTest_Update();
+        control_result = ChassisControl_Update();
+        ChassisVelocityTest_HandleControlResult(control_result);
+        if (control_result != CHASSIS_CONTROL_RESULT_VELOCITY)
+        {
+            VESCMotorStopAll();
+        }
+        break;
+
+    case CHASSIS_DEBUG_NONE:
+    default:
+        /*
+         * 正常统一仲裁：STOP 清零，LEGACY 运行旧链，VELOCITY 已经在
+         * ChassisControl_Update 内生成四轮目标。
+         */
+        control_result = ChassisControl_Update();
+        if (control_result == CHASSIS_CONTROL_RESULT_STOP)
+        {
+            VESCMotorStopAll();
+        }
+        else if (control_result == CHASSIS_CONTROL_RESULT_LEGACY)
+        {
+            OmniCalculate();
+            LimitChassisOutput();
+        }
+        break;
     }
-    else if (control_result == CHASSIS_CONTROL_RESULT_LEGACY)
-    {
-        OmniCalculate();
-        LimitChassisOutput();
-    }
-#endif
     
     // 上位机回传和控制解算解耦，避免串口发送阻塞主控制路径
     uint32_t now_tick = xTaskGetTickCount();

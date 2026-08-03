@@ -583,7 +583,7 @@
 
   <Group>
     <GroupName>Drivers/STM32F4xx_HAL_Driver</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -915,7 +915,7 @@
 
   <Group>
     <GroupName>Drivers/CMSIS</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -935,7 +935,7 @@
 
   <Group>
     <GroupName>Middlewares/FreeRTOS</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1063,7 +1063,7 @@
 
   <Group>
     <GroupName>Cubot/Driver</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1167,7 +1167,7 @@
 
   <Group>
     <GroupName>Cubot/Devices</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1271,7 +1271,7 @@
 
   <Group>
     <GroupName>Cubot/Device/IMU</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1411,7 +1411,7 @@
 
   <Group>
     <GroupName>Cubot/Device/Motor</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1443,7 +1443,7 @@
 
   <Group>
     <GroupName>Cubot/Device/Daemon</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1463,7 +1463,7 @@
 
   <Group>
     <GroupName>Cubot/Modules</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1507,7 +1507,7 @@
 
   <Group>
     <GroupName>Cubot/Velocity</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
@@ -1574,6 +1574,18 @@
     <File>
       <GroupNumber>12</GroupNumber>
       <FileNumber>94</FileNumber>
+      <FileType>5</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\CUBOT\Cubot_Velocity\chassis_velocity_test.h</PathWithFileName>
+      <FilenameWithoutPath>chassis_velocity_test.h</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>12</GroupNumber>
+      <FileNumber>95</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1585,7 +1597,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>95</FileNumber>
+      <FileNumber>96</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1597,7 +1609,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>96</FileNumber>
+      <FileNumber>97</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1609,7 +1621,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>97</FileNumber>
+      <FileNumber>98</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1621,7 +1633,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>98</FileNumber>
+      <FileNumber>99</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1633,7 +1645,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>99</FileNumber>
+      <FileNumber>100</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1645,7 +1657,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>100</FileNumber>
+      <FileNumber>101</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1657,7 +1669,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>101</FileNumber>
+      <FileNumber>102</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1669,7 +1681,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>102</FileNumber>
+      <FileNumber>103</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1681,7 +1693,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>103</FileNumber>
+      <FileNumber>104</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1693,7 +1705,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>104</FileNumber>
+      <FileNumber>105</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1705,7 +1717,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>105</FileNumber>
+      <FileNumber>106</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1717,7 +1729,7 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>106</FileNumber>
+      <FileNumber>107</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1729,13 +1741,25 @@
     </File>
     <File>
       <GroupNumber>12</GroupNumber>
-      <FileNumber>107</FileNumber>
+      <FileNumber>108</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>..\CUBOT\Cubot_Velocity\slip_detector.h</PathWithFileName>
       <FilenameWithoutPath>slip_detector.h</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>12</GroupNumber>
+      <FileNumber>109</FileNumber>
+      <FileType>1</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\CUBOT\Cubot_Velocity\chassis_velocity_test.c</PathWithFileName>
+      <FilenameWithoutPath>chassis_velocity_test.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1749,7 +1773,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>13</GroupNumber>
-      <FileNumber>108</FileNumber>
+      <FileNumber>110</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1761,7 +1785,7 @@
     </File>
     <File>
       <GroupNumber>13</GroupNumber>
-      <FileNumber>109</FileNumber>
+      <FileNumber>111</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1775,13 +1799,13 @@
 
   <Group>
     <GroupName>Cubot/Algorithm</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>14</GroupNumber>
-      <FileNumber>110</FileNumber>
+      <FileNumber>112</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1793,7 +1817,7 @@
     </File>
     <File>
       <GroupNumber>14</GroupNumber>
-      <FileNumber>111</FileNumber>
+      <FileNumber>113</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1805,7 +1829,7 @@
     </File>
     <File>
       <GroupNumber>14</GroupNumber>
-      <FileNumber>112</FileNumber>
+      <FileNumber>114</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1817,7 +1841,7 @@
     </File>
     <File>
       <GroupNumber>14</GroupNumber>
-      <FileNumber>113</FileNumber>
+      <FileNumber>115</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1829,7 +1853,7 @@
     </File>
     <File>
       <GroupNumber>14</GroupNumber>
-      <FileNumber>114</FileNumber>
+      <FileNumber>116</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1843,13 +1867,13 @@
 
   <Group>
     <GroupName>User/Config</GroupName>
-    <tvExp>0</tvExp>
+    <tvExp>1</tvExp>
     <tvExpOptDlg>0</tvExpOptDlg>
     <cbSel>0</cbSel>
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>15</GroupNumber>
-      <FileNumber>115</FileNumber>
+      <FileNumber>117</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -1861,13 +1885,25 @@
     </File>
     <File>
       <GroupNumber>15</GroupNumber>
-      <FileNumber>116</FileNumber>
+      <FileNumber>118</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>..\CUBOT\Cubot_User_Config\hardware_config.c</PathWithFileName>
       <FilenameWithoutPath>hardware_config.c</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>15</GroupNumber>
+      <FileNumber>119</FileNumber>
+      <FileType>5</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\CUBOT\Cubot_User_Config\chassis_debug.h</PathWithFileName>
+      <FilenameWithoutPath>chassis_debug.h</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1881,7 +1917,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>16</GroupNumber>
-      <FileNumber>117</FileNumber>
+      <FileNumber>120</FileNumber>
       <FileType>4</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>

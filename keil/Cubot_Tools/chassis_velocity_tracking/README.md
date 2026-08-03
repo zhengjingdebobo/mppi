@@ -7,7 +7,10 @@ V2 联合速度命令发送车体系 `vx/vy`，并把目标速度、车体系实
 四轮 ERPM 保存为 CSV。实际速度是 `vx/vy` 在指定运动方向上的投影。
 CSV 还会记录 STM32 真正采用的 `cmd_output`，用于区分上位机命令延迟、
 STM32 控制输出和车辆实际反馈。
-每行还包含 `status_frame_count` 和 `status_age_s`。测试结束时脚本会打印
+新版 STATUS 帧包含 STM32 生成时间戳和连续序号。接收线程会将每一帧快照
+排队，CSV 按 STM32 时间轴逐帧写入，不会因为 PC 批量收包而覆盖中间状态。
+每行还包含 `stm32_tick_ms`、`status_sequence`、`status_sequence_gap`、
+`status_transport_delay_s`、`status_frame_count` 和 `status_age_s`。测试结束时脚本会打印
 STATUS 实际接收频率；当前诊断固件应接近 `20 Hz`，低于 `15 Hz` 时不应使用
 该曲线调整闭环参数。
 

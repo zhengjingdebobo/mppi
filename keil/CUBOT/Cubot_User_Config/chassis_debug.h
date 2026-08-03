@@ -1,0 +1,33 @@
+#ifndef CHASSIS_DEBUG_H
+#define CHASSIS_DEBUG_H
+
+/*
+ * 底盘专用调试固件只能选择一种模式。正常运行必须保持 NONE。
+ * 这里使用 C 枚举常量，因此业务代码应使用普通 if/switch 判断，
+ * 不要在预处理 #if 中比较这些枚举名称。
+ */
+typedef enum
+{
+    CHASSIS_DEBUG_NONE = 0,
+    CHASSIS_DEBUG_RPM_CALIBRATION,
+    CHASSIS_DEBUG_VELOCITY_TEST
+} ChassisDebugMode_e;
+
+#define CHASSIS_DEBUG_MODE CHASSIS_DEBUG_NONE
+
+/* 仅供条件编译使用，由上面的唯一配置宏推导，不是第二个模式开关。 */
+#define CHASSIS_DEBUG_MODE_VALUE_CHASSIS_DEBUG_NONE            0
+#define CHASSIS_DEBUG_MODE_VALUE_CHASSIS_DEBUG_RPM_CALIBRATION 1
+#define CHASSIS_DEBUG_MODE_VALUE_CHASSIS_DEBUG_VELOCITY_TEST   2
+#define CHASSIS_DEBUG_MODE_VALUE_SELECT_(mode) \
+    CHASSIS_DEBUG_MODE_VALUE_##mode
+#define CHASSIS_DEBUG_MODE_VALUE_SELECT(mode) \
+    CHASSIS_DEBUG_MODE_VALUE_SELECT_(mode)
+#define CHASSIS_DEBUG_MODE_VALUE \
+    CHASSIS_DEBUG_MODE_VALUE_SELECT(CHASSIS_DEBUG_MODE)
+
+typedef char ChassisDebugModeMustBeValid[
+    (CHASSIS_DEBUG_MODE >= CHASSIS_DEBUG_NONE &&
+     CHASSIS_DEBUG_MODE <= CHASSIS_DEBUG_VELOCITY_TEST) ? 1 : -1];
+
+#endif /* CHASSIS_DEBUG_H */
