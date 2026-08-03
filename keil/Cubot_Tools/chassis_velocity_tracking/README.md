@@ -2,7 +2,7 @@
 
 用于验证 STM32 麦轮底盘在指定平移方向上的速度跟随能力。
 
-采集脚本生成 `0.01 m/s → 0.50 m/s → 0 m/s` 的线性速度斜坡，通过现有
+采集脚本生成 `0.06 m/s → 0.50 m/s → 0.06 m/s → 停止` 的平滑正弦速度，通过现有
 V2 联合速度命令发送车体系 `vx/vy`，并把目标速度、车体系实际反馈、里程计和
 四轮 ERPM 保存为 CSV。实际速度是 `vx/vy` 在指定运动方向上的投影。
 CSV 还会记录 STM32 真正采用的 `cmd_output`，用于区分上位机命令延迟、
@@ -15,8 +15,8 @@ STATUS 实际接收频率；当前诊断固件应接近 `20 Hz`，低于 `15 Hz`
 
 在仓库根目录执行：
 
-```powershell
-python keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 0
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 0
 ```
 
 方向角约定：
@@ -30,24 +30,23 @@ python keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --po
 
 也可以测试任意斜向，并指定输出文件：
 
-```powershell
-python keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 45 --output keil\Cubot_Tools\chassis_velocity_tracking\data\forward_left.csv
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 45 --output data\forward_left_sine.csv
 ```
 
-默认先以 `0.01 m/s` 保持 `2 s`，然后以 `0.05 m/s²` 缓慢加速到
-`0.50 m/s`，峰值保持 `3 s`，再以 `0.10 m/s²` 降到零，最后继续记录 `2 s`。
-可通过 `--start-hold`、`--accel`、`--decel`、`--peak-hold` 和
-`--zero-hold` 修改。
+默认先以 `0.06 m/s` 保持 `2 s`，随后在 `20 s` 内按平滑正弦曲线升至
+`0.50 m/s` 并降回 `0.06 m/s`，到达最低稳定速度后直接发送零速停车，最后继续记录 `2 s`。
+可通过 `--start-hold`、`--sine-duration` 和 `--zero-hold` 修改。
 
-默认测试总时长约 `21.8 s`，其中从 `0.01 m/s` 上升到 `0.50 m/s` 约需
-`9.8 s`；预计沿指定方向移动约 `5.27 m`。运行前必须清空对应方向的场地，保持
+默认测试总时长约 `24 s`，最大速度斜率约 `0.069 m/s²`；预计沿指定方向移动约
+`5.72 m`。运行前必须清空对应方向的场地，保持
 遥控器在线且可以随时抢占急停。按 `Ctrl+C` 会立即发送 STOP，并保留已经采集的
 部分 CSV。
 
 ## 2. 绘制曲线
 
-```powershell
-python keil\Cubot_Tools\chassis_velocity_tracking\plot_velocity_tracking.py keil\Cubot_Tools\chassis_velocity_tracking\data\forward_left.csv
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\plot_velocity_tracking.py data\forward_left_sine.csv
 ```
 
 默认在 CSV 同目录生成 `forward_left_plot.png`。图片上半部分同时显示 PC 指定
@@ -69,3 +68,33 @@ plot_velocity_tracking(Path("data/forward_left.csv"))
 ```powershell
 pip install pyserial numpy matplotlib
 ```
+
+## 3. 原地旋转 wz 调试
+
+`wz_tracking_test.py` 使用 V2 联合速度接口发送 `vx=0、vy=0`，执行保守的双向
+阶梯轨迹：
+
+```text
+0 → +0.12 → +0.25 → 0 → -0.12 → -0.25 → 0 rad/s
+```
+
+正 `wz` 表示逆时针/左转，负 `wz` 表示顺时针/右转。默认峰值约为 `14.3°/s`，
+低于固件 `0.60 rad/s` 上限。运行前应清空车辆四周，保持遥控器在线并可随时
+抢占急停：
+
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\wz_tracking_test.py --port COM12 --output data\wz_baseline.csv
+```
+
+测试同时记录 PC 目标、STM32 实际采用的 `cmd_output.wz`、IMU `wz`、里程计航向、
+四轮目标/反馈 ERPM 和 STATUS 接收频率。按 `Ctrl+C` 会停车并保留已有 CSV。
+
+绘图并打印各阶梯后半段的稳态均值、误差和 `actual/target` 比例：
+
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\plot_wz_tracking.py data\wz_baseline.csv
+```
+
+第一轮先判断方向、正反转对称性、比例、零偏和停车拖尾，不修改固件参数。只有
+确认反馈方向正确、STATUS 接近 `20 Hz` 且开环比例稳定后，再决定调整
+`MECANUM_YAW_ERPM_SCALE` 或增加独立角速度闭环。

@@ -1,8 +1,368 @@
 # STM32 VESC 底盘工程交接摘要
 
-更新时间：2026-07-30
+## 2026-08-02 `wz` 实车调试最新权威状态（新会话优先阅读）
+
+> 本节是本次下班前的最新交接入口。若与下方旧记录冲突，以本节为准。
+> 本次 `wz` 调试只新增 PC 端测试/绘图工具和实测数据；停车软降落候选修改经
+> 实车体验后已按用户要求取消，源码和本地 HEX 均恢复到下方已验收基线。
+
+### 固件与调试链路
+
+```text
+Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
+HEX：      keil/MDK-ARM/work_Zxj/work_Zxj.hex
+SHA256：   D46305E4A4FB6340BE02B6BE8EABB4666E3E743EFDFC2CB8664C32469822B35C
+串口：     COM12，115200 baud
+PC V2 命令和 CSV 采样：20 Hz
+STM32 STATUS 实收：每次测试均约 20.0 Hz
+```
+
+所有 `wz` 基线测试均无无效反馈、通信中断或
+安全保护报错，结束后均成功停车。以下相关固件参数保持不变：
+
+```c
+#define CHASSIS_VELOCITY_MAX_WZ_RADPS           0.60f
+#define CHASSIS_VELOCITY_MAX_ANG_ACCEL_RADPS2   1.50f
+#define MECANUM_YAW_ERPM_SCALE                  0.6052f
+#define MECANUM_YAW_COMMAND_SIGN                (1.0f)
+#define IMU_STATE_YAW_SIGN                      (1.0f)
+#define RPM_COMP_RUN_CMD_MIN_RPM_LF/RF/LB/RB   900.0f
+```
+
+主动旋转当前只有角速度限幅、角加速度斜坡、麦轮运动学和 RPM 死区补偿，未增加
+独立 `wz` P/PI 外环。平移时的 heading hold 与本次主动旋转测试相互独立。
+
+### 新增调试工具
+
+```text
+keil/Cubot_Tools/chassis_velocity_tracking/wz_tracking_test.py
+keil/Cubot_Tools/chassis_velocity_tracking/plot_wz_tracking.py
+keil/Cubot_Tools/chassis_velocity_tracking/README.md（追加 wz 使用说明）
+```
+
+采集工具通过 V2 接口发送 `vx=0、vy=0、wz=目标值`，关闭后台重复发送，由测试循环
+单一地以 20 Hz 发命令。CSV 保存 PC 目标、STM32 `cmd_output.wz`、IMU 实际 `wz`、
+实际 `vx/vy`、里程计、四轮目标/反馈 ERPM、STATUS 计数和串口诊断字段。绘图工具
+打印各阶段后 50% 样本的稳态均值、误差和 `actual/target` 比例。
+
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\wz_tracking_test.py --port COM12 --output data\wz_baseline.csv
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\plot_wz_tracking.py data\wz_baseline.csv
+```
+
+### 两次 `±0.12 / ±0.25 rad/s` 基线测试
+
+```text
+data/wz_baseline.csv
+data/wz_baseline_plot.png
+data/wz_baseline_repeat.csv
+data/wz_baseline_repeat_plot.png
+```
+
+两次结果高度一致，第二次稳态结果：
+
+```text
+目标 +0.12 → 实际 +0.1706 rad/s，actual/target=1.422
+目标 -0.12 → 实际 -0.1707 rad/s，actual/target=1.422
+目标 +0.25 → 实际 +0.2545 rad/s，actual/target=1.018
+目标 -0.25 → 实际 -0.2513 rad/s，actual/target=1.005
+静止零偏约 +0.0007 rad/s
+停车后约 0.5 s 进入 |wz| < 0.01 rad/s
+```
+
+`0.12 rad/s` 的原始轮速需求低于电机连续稳定区，RPM 补偿把四轮目标托到约
+`±910 ERPM`，所以实际形成约 `0.17 rad/s` 的低速平台。这不是 yaw 比例错误，
+也不能靠更强 PI 消除。`0.25 rad/s` 时四轮目标约 `±1330 ERPM`，脱离低速补偿区
+后平均跟踪准确。
+
+用户实车观察：旋转有轻微“一顿一顿”，但不明显；没有打滑、车身摆动或异常声音。
+数据中 `0.25 rad/s` 附近存在约 `3.75 Hz` 的实际轮速/IMU `wz` 纹波。STM32 四轮
+目标 ERPM 恒定，而四轮反馈和 IMU 同频变化，因此不是串口目标抖动或单纯 IMU 噪声，
+更像驱动或麦轮滚子周期性机械纹波。
+
+### `±0.20 / ±0.35 rad/s` 测试
+
+```text
+data/wz_020_035.csv
+data/wz_020_035_plot.png
+```
+
+```text
+目标 +0.20 → 实际 +0.1751 rad/s（该次存在单轮偶发掉速）
+目标 -0.20 → 实际 -0.1995 rad/s
+目标 +0.35 → 实际 +0.3573 rad/s
+目标 -0.35 → 实际 -0.3524 rad/s
+```
+
+用户观察顿挫程度与 `0.25 rad/s` 相近，但该次出现现实位置偏移。遥测发现
+`+0.20 rad/s` 阶段后半段四轮反馈/目标比为：
+
+```text
+LF=0.656，RF=0.974，LB=0.907，RB=1.012
+```
+
+LF 明显掉速；到 `±0.35 rad/s` 后四轮均恢复到目标约 `98%～102%`。
+`-0.35 rad/s` 段检测到约 `5.25 Hz` 纹波，频率随轮速升高，仍更符合机械/驱动
+周期纹波。由于单轮异常只出现一次，不能据此修改 LF 增益或低速映射。
+
+### `±0.20 rad/s` 专项重复测试
+
+```text
+data/wz_020_repeat.csv
+data/wz_020_repeat_plot.png
+```
+
+每个方向连续保持约 8 s，结果：
+
+```text
+左转两阶段实际均值：+0.2042 / +0.2027 rad/s
+右转两阶段实际均值：-0.1981 / -0.2026 rad/s
+四轮稳态反馈/目标比：约 97.2%～101.0%
+轮速里程计最终平移偏移：约 6.6 mm
+用户肉眼观察：本次没有位置偏移
+```
+
+上一轮 LF `0.656` 的掉速没有复现，当前判定为偶发起转、接触或负载异常，不作为
+固定参数修改依据。
+
+### 当前最终结论与验收决定
+
+保持当前固件：不调整 `MECANUM_YAW_ERPM_SCALE`，不修改单轮 RPM 增益，也不增加
+`wz` P/PI 外环。原因：
+
+1. `0.20～0.35 rad/s` 正反向平均速度准确且基本对称。
+2. 未复现持续平移偏移，没有打滑、摆动或异常声音。
+3. 轻微周期顿挫当前可接受；增加外环可能因反馈延迟引入振荡，收益不足。
+4. `0.12 rad/s` 偏快是最低稳定 ERPM 造成的物理平台，不是 yaw 比例问题。
+
+```text
+连续旋转常用范围：优先 |wz|=0.20～0.35 rad/s
+连续旋转最低实用值：约 |wz|=0.18 rad/s
+更小的 |wz|：上层直接置零；若以后确需微调，单独设计脉冲式低速控制
+固件保护上限：保持 |wz|<=0.60 rad/s
+```
+
+### 下次会话继续工作的边界
+
+默认认为 `wz` 已完成首轮实车验收，不要无数据地重复修改 yaw 比例或单轮增益。
+只有出现以下情况之一时再继续：
+
+1. 增加载荷、更换轮胎/电池、改变地面后，顿挫或偏移明显恶化。
+2. `0.20 rad/s` 附近再次稳定复现同一车轮掉速；至少连续复测 3 次，再决定是否
+   修改该轮低速映射。
+3. 应用确实要求更平滑的主动旋转；先加保守的 `wz` P-only 外环并做关闭/开启 A/B，
+   不要直接加积分。
+4. 应用要求低于约 `0.18 rad/s` 的连续微转；设计脉冲/间歇控制，不要用更强 PI
+   对抗 `900 ERPM` 最低稳定运行平台。
+
+一句话交接：
+
+```text
+wz 方向、比例、正反向对称性和停车均通过；0.20～0.35 rad/s 可用，低于约
+0.17 rad/s 受最低 ERPM 平台限制；轻微周期顿挫可接受，偶发位置偏移未复现，
+当前固件和参数保持不变。
+```
+
+更新时间：2026-08-02
 
 用途：下次继续工作时先阅读本文档。本文只保留当前代码事实、已经实车确认的结果、关键根因和待完成事项，不再记录已经失效的中间猜测。
+
+## 2026-08-02 当前权威状态（下次优先阅读本节）
+
+> 本节覆盖下文与串口波特率、遥测频率、速度 PI 开关/参数、测试轨迹和下一步
+> 计划冲突的历史记录。当前测试命令统一使用 Windows CMD 语法。
+
+### 当前固件、串口和控制频率
+
+当前调试链路：
+
+```text
+PC 串口：COM12，115200 baud
+上行遥测：只发送 86 字节 STATUS，目标 20 Hz
+VESC 详细串口帧：关闭
+IMU 详细串口帧：关闭
+STM32 内部 VESC CAN 反馈、IMU 读取和底盘控制：约 200 Hz
+PC V2 速度命令：20 Hz 单一发送源
+```
+
+STATUS-only 不等于 STM32 没有 IMU/VESC 数据；只是暂停了两类大体积详细上行帧。
+STATUS 仍携带调试所需的 STM32 最终速度命令、车体实际 `vx/vy/wz`、四轮目标和
+反馈 ERPM、任务状态以及临时 UART/V2 计数。实测：
+
+```text
+10 秒 STATUS：199 帧，19.9 Hz
+正弦测试 STATUS/V2：均约 19.97 Hz
+```
+
+此前约 10～12 Hz 和数秒遥测滞后的根因已经解决：
+
+1. UART DMA/IDLE 回调可能把一帧拆成小于 16 字节的片段，旧 NX16 解析没有按
+   实际 `Size` 跨回调重组；现在保存真实接收长度并进行流式重组。
+2. 测试主循环 20 Hz 发送时，`CarController` 曾同时以后台 10 Hz 重发旧目标；
+   现在速度测试调用 `background_refresh=False`，只保留一个 20 Hz 发送源。
+
+当前最新固件：
+
+```text
+Keil 工程：keil/MDK-ARM/work_Zxj.uvprojx
+HEX：      keil/MDK-ARM/work_Zxj/work_Zxj.hex
+文件时间：2026-08-02 14:37:09
+SHA256：   D46305E4A4FB6340BE02B6BE8EABB4666E3E743EFDFC2CB8664C32469822B35C
+构建结果：0 Error(s), 4 Warning(s)
+```
+
+4 个警告均为既有的无参数类型旧式函数声明。
+
+### 当前速度闭环和航向保持参数（已实车接受，暂不再改）
+
+`keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h` 当前权威值：
+
+```c
+#define CHASSIS_TRANSLATION_PI_ENABLE               1u
+#define CHASSIS_TRANSLATION_PI_KP                    0.16f
+#define CHASSIS_TRANSLATION_PI_KI                    0.01f
+#define CHASSIS_TRANSLATION_PI_MIN_SPEED_MPS         0.080f
+#define CHASSIS_TRANSLATION_PI_INTEGRAL_LIMIT_MPS    0.080f
+#define CHASSIS_TRANSLATION_PI_CORRECTION_LIMIT_MPS  0.120f
+
+#define CHASSIS_HEADING_HOLD_ENABLE                  1u
+#define CHASSIS_HEADING_HOLD_MIN_SPEED_MPS           0.080f
+#define CHASSIS_HEADING_HOLD_WZ_DEADBAND_RADPS       0.010f
+#define CHASSIS_HEADING_HOLD_KP_RADPS_PER_RAD        1.00f
+#define CHASSIS_HEADING_HOLD_KD                       0.15f
+#define CHASSIS_HEADING_HOLD_MAX_CORRECTION_RADPS    0.060f
+```
+
+调参过程结论：较强 PI 会造成轻微左右偏航摇摆；当前 `Kp=0.16、Ki=0.01` 的版本
+实车跟随良好，用户决定保留。航向保持 PD 用于平移时压制车头转动。低速下降段
+约 `0.057～0.060 m/s` 的平台主要来自四轮最低稳定运行命令：
+
+```c
+RPM_COMP_RUN_CMD_MIN_RPM_LF/RF/LB/RB = 900.0f
+```
+
+因此该平台不是继续增大 PI 就能消除的问题。低于执行器稳定速度后，应选择置零、
+上层钳位或以后单独设计低速脉冲控制。
+
+### 正弦速度测试工具
+
+`keil/Cubot_Tools/chassis_velocity_tracking/velocity_tracking_test.py` 已从梯形斜坡改为
+平滑的升余弦/正弦型速度周期，默认轨迹为：
+
+```text
+0.06 m/s 保持 2 s
+0.06 → 0.50 → 0.06 m/s，完整周期 20 s
+随后目标置零并继续记录 2 s
+命令与 CSV 采样：20 Hz
+方向：--direction-deg 可配置
+默认预计路程：约 5.72 m
+```
+
+脚本顶部已经加入中文说明和 CMD 使用示例。绘图模块
+`plot_velocity_tracking.py` 独立读取 CSV，绘制 PC 目标、STM32 最终输出、实际速度、
+控制误差和时间线差值。以后运行 Python 必须优先使用项目虚拟环境：
+
+```cmd
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 45 --sine-duration 20 --output data\sine_45.csv
+.venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\plot_velocity_tracking.py data\sine_45.csv
+```
+
+若直接运行 `python` 出现 Windows“此应用无法在你的电脑上运行”，不是 STM32
+问题，应使用上面的 `.venv\Scripts\python.exe`。
+
+### 2026-08-02 正弦测试与方向问题结论
+
+前进/后退速度跟随已经良好。曾有一组长距离左移数据在约 `15.047 s` 后出现
+STM32 速度输出归零、旧遥控链接管和明显偏航；用户随后确认因为车辆即将碰撞，
+主动拨动了遥控器。该时刻之后的数据无效，不能用于 PID 或运动学判断。当前安全
+逻辑仍是遥控器摇杆越过死区后锁存接管串口控制。
+
+实车方向现象：低速左右移动较平稳；较长距离/较高速度横移时，车头基本不转，
+但地面路径会逐渐走斜。这里必须区分：
+
+```text
+车头转动：航向问题，可由 IMU heading hold 观测和修正。
+车头不动但路径走斜：平移交叉耦合/麦轮滚子或地面打滑问题。
+```
+
+当前“实际 vx/vy”和里程计来自四轮 VESC 转速正解；轮子即使在地面侧滑，编码器
+仍可能显示完美跟随。因此 CSV 曲线正常并不能证明现实轨迹不漂。要闭环修正现实
+路径，最终需要外部定位/视觉/激光等地面速度观测；没有外部观测时，只能用卷尺
+测得主方向位移和交叉偏移，再做经验方向补偿，例如
+`vx_cmd = vx_target - k * vy_target`，其中 `k=实测前后偏移/实测横向距离`。
+在没有重复、可量化的实测数据前，不写入固定补偿。
+
+为判断旧图中 45° 在 `0.50 m/s` 下误差很大的原因，已做安全的低速 A/B 测试：
+
+```text
+数据：data/sine_45_020.csv、data/sine_315_020.csv
+轨迹：0.06 → 0.20 → 0.06 → 0 m/s
+每组：221 样本，约 11.016 s
+STATUS/V2：均约 19.97 Hz
+命令中断、无效反馈、遥控接管：均为 0
+```
+
+量化结果：
+
+```text
+                         45°             315°
+目标-实际速度 MAE        0.0074 m/s      0.0082 m/s
+STM32输出-实际 MAE       0.0035 m/s      0.0028 m/s
+累计航向变化             0.354°          0.471°
+航向变化范围             0.522°          0.632°
+轮速里程计方向误差       约 0.43°        约 0.07°
+里程计距离误差           -2.33%          -0.86%
+```
+
+45° 主要由 RF/LB 轮对工作，两轮反馈/目标中位比分别为 `1.002/1.003`；315°
+主要由 LF/RB 工作，对应 `0.998/1.006`。因此 `0.20 m/s` 下 45° 控制正常，
+没有证据表明 RF/LB 轮组在低速明显无力，也没有发现 45° 运动学公式错误。
+
+旧的 `0.50 m/s` 45° 图没有保留对应 CSV，不能继续做逐帧定论。该方向在
+`0.50 m/s` 时主动轮需求约 `12,000 ERPM`，已经接近 `13,000 ERPM` 安全上限；
+如果问题只在高速出现，应优先怀疑 RF/LB 在高负载下的能力、轮压/滚子摩擦和
+地面打滑，而不是修改当前已通过低速测试的 PI。后续如需复现，按 `0.30 → 0.40`
+逐级短距离测试并保证足够场地，不要直接在狭窄区域测试 `0.50 m/s`。
+
+本次还发现停止瞬态存在方向差异：目标从 `0.06 m/s` 切零后，45° 的 STM32
+输出和实际速度约 `0.80 s` 后才归零；315° 的 STM32 输出约 `0.20 s`、实际速度
+约 `0.36 s` 后归零。这可能与平移 PI 积分和最低运行 ERPM 补偿共同有关，是下次
+可以专项检查的剩余问题，但不影响本次正弦升降段通过。
+
+本次生成的最终对照图：
+
+```text
+data/sine_45_020_plot.png
+data/sine_315_020_plot.png
+```
+
+### 下次继续工作的建议顺序
+
+1. 首先确认当前烧录 HEX 的 SHA256 和本节一致，保持现有 PI/heading 参数不动。
+2. 若继续研究路径走斜，记录每次现实主方向距离、交叉偏移、方向、峰值速度、
+   地面和载荷；不要只看轮速里程计。
+3. 在宽阔场地逐级做 45°/315° 的 `0.30 m/s`、必要时 `0.40 m/s` A/B 测试，
+   每次保留 CSV 和图，出现危险立即遥控接管并标记接管时刻。
+4. 单独检查 45° 切零约 `0.80 s` 的延迟，区分 PI 积分释放、最低 ERPM 补偿和
+   VESC 制动/滑行设置；在原因确认前不要用更强 PI 掩盖。
+5. 如果轮速数据仍完美而现实路径走斜，转向外部定位或基于卷尺的方向补偿标定。
+
+### 2026-08-02 主要相关文件
+
+```text
+keil/CUBOT/Cubot_Velocity/chassis_velocity_config.h
+keil/CUBOT/Cubot_Velocity/chassis_control.c
+keil/CUBOT/Cubot_modules/chassis.c
+keil/CUBOT/Cubot_devices/nx16.c
+keil/car_controlst.py
+keil/Cubot_Tools/chassis_velocity_tracking/velocity_tracking_test.py
+keil/Cubot_Tools/chassis_velocity_tracking/plot_velocity_tracking.py
+keil/Cubot_Tools/chassis_velocity_tracking/README.md
+data/sine_45_020.csv
+data/sine_315_020.csv
+```
+
+## 历史记录（若与 2026-08-02 权威状态冲突，以顶部新状态为准）
 
 ## 2026-07-30 当前权威状态（下次从这里继续）
 

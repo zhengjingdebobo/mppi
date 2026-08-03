@@ -5,7 +5,7 @@
 # =================================
 #
 # 功能：
-#   1. 先保持 0.01 m/s，再生成 0.01 m/s → 0.50 m/s → 0 m/s 的速度斜坡；
+#   1. 先保持 0.06 m/s，再生成 0.06 → 0.50 → 0.06 m/s 的平滑正弦速度；
 #   2. 通过现有 V2 联合速度接口持续向 STM32 下发 vx、vy；
 #   3. 读取 STM32 返回的车体系 vx、vy、wz 反馈；
 #   4. 将目标速度、实际速度、里程计和四轮 ERPM 保存为 CSV。
@@ -25,13 +25,13 @@
 #   .venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 90 --output keil\Cubot_Tools\chassis_velocity_tracking\data\left.csv
 #
 #   前左 45° 斜向，修改加减速度：
-#   .venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 45 --accel 0.15 --decel 0.15
+#   .venv\Scripts\python.exe keil\Cubot_Tools\chassis_velocity_tracking\velocity_tracking_test.py --port COM12 --direction-deg 45 --sine-duration 20
 #
 # 安全提示：
-#   默认参数预计沿指定方向运动约 5.27 m。测试前必须清空场地、保持遥控器在线
+#   默认参数预计沿指定方向运动约 5.72 m。测试前必须清空场地、保持遥控器在线
 #   并确认能够随时急停。运行中按 Ctrl+C 会发送 STOP，并保留已采集的 CSV。
 #
-"""底盘平移速度升降斜坡跟随测试，并将命令与反馈保存为 CSV。"""
+"""底盘平移速度正弦跟随测试，并将命令与反馈保存为 CSV。"""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ CSV_FIELDS = (
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="底盘 0.01→最大速度→0 的平移速度跟随测试",
+        description="底盘 0.06→最大速度→0.06→停止的正弦速度跟随测试",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 方向约定:
@@ -104,7 +104,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 示例:
   python velocity_tracking_test.py --port COM12 --direction-deg 0
   python velocity_tracking_test.py --port COM12 --direction-deg 90 --output data/left.csv
-  python velocity_tracking_test.py --port COM12 --direction-deg 45 --accel 0.15 --decel 0.15
+  python velocity_tracking_test.py --port COM12 --direction-deg 45 --sine-duration 20
 """,
     )
     parser.add_argument("--port", default="COM12", help="串口号，默认 COM12")
@@ -115,12 +115,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="运动方向角：0=前，90=左，180=后，270=右",
     )
-    parser.add_argument("--start-speed", type=float, default=0.01, help="起始速度 m/s")
+    parser.add_argument("--start-speed", type=float, default=0.06, help="正弦轨迹最低速度 m/s")
     parser.add_argument("--max-speed", type=float, default=0.50, help="峰值速度 m/s，最大 0.50")
-    parser.add_argument("--accel", type=float, default=0.05, help="上升斜坡加速度 m/s^2")
-    parser.add_argument("--decel", type=float, default=0.10, help="下降斜坡减速度 m/s^2")
+    parser.add_argument(
+        "--sine-duration",
+        type=float,
+        default=20.0,
+        help="从最低速度升到峰值再降回最低速度的正弦周期 s",
+    )
     parser.add_argument("--start-hold", type=float, default=2.0, help="起始速度保持时间 s")
-    parser.add_argument("--peak-hold", type=float, default=3.0, help="峰值速度保持时间 s")
     parser.add_argument("--zero-hold", type=float, default=2.0, help="目标降到零后的记录时间 s")
     parser.add_argument("--sample-rate", type=float, default=20.0, help="命令更新和 CSV 采样频率 Hz")
     parser.add_argument("--settle", type=float, default=1.0, help="初始化后的反馈等待时间 s")
@@ -135,13 +138,12 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("必须满足 0 < --start-speed <= --max-speed")
     if args.max_speed > 0.50:
         raise ValueError("--max-speed 不能超过当前固件平移上限 0.50 m/s")
-    if args.accel <= 0.0 or args.decel <= 0.0:
-        raise ValueError("--accel 和 --decel 必须大于 0")
+    if args.sine_duration <= 0.0:
+        raise ValueError("--sine-duration 必须大于 0")
     if not 1.0 <= args.sample_rate <= 100.0:
         raise ValueError("--sample-rate 必须在 1～100 Hz 之间")
     if min(
         args.start_hold,
-        args.peak_hold,
         args.zero_hold,
         args.settle,
         args.start_delay,
@@ -155,31 +157,30 @@ def target_at_time(
     elapsed_s: float,
     start_speed: float,
     max_speed: float,
-    accel: float,
-    decel: float,
+    sine_duration: float,
     start_hold: float,
-    peak_hold: float,
     zero_hold: float,
 ) -> tuple[str, float, bool]:
-    """返回 (阶段, 目标速度, 是否结束)。"""
-    ramp_up_s = (max_speed - start_speed) / accel
-    ramp_down_s = max_speed / decel
-    ramp_start_s = start_hold
-    peak_start_s = ramp_start_s + ramp_up_s
-    peak_end_s = peak_start_s + peak_hold
-    ramp_end_s = peak_end_s + ramp_down_s
-    test_end_s = ramp_end_s + zero_hold
+    """返回（阶段、目标速度、是否结束）。
 
-    if elapsed_s < ramp_start_s:
-        return "start_hold", start_speed, False
-    if elapsed_s < peak_start_s:
-        ramp_elapsed_s = elapsed_s - ramp_start_s
-        return "ramp_up", min(max_speed, start_speed + accel * ramp_elapsed_s), False
-    if elapsed_s < peak_end_s:
-        return "peak_hold", max_speed, False
-    if elapsed_s < ramp_end_s:
-        target = max_speed - decel * (elapsed_s - peak_end_s)
-        return "ramp_down", max(0.0, target), False
+    使用升余弦形式生成一个完整的平滑正弦周期：最低速度 -> 峰值 ->
+    最低速度。周期终点到达最低稳定速度后直接给零速停车，不再要求车辆
+    跟踪无法稳定运行的 0~start_speed 区间。
+    """
+    sine_start_s = start_hold
+    sine_end_s = sine_start_s + sine_duration
+    test_end_s = sine_end_s + zero_hold
+
+    if elapsed_s < sine_start_s:
+        return "min_hold", start_speed, False
+    if elapsed_s < sine_end_s:
+        progress = (elapsed_s - sine_start_s) / sine_duration
+        amplitude = max_speed - start_speed
+        target = start_speed + 0.5 * amplitude * (
+            1.0 - math.cos(2.0 * math.pi * progress)
+        )
+        phase = "sine_up" if progress < 0.5 else "sine_down"
+        return phase, target, False
     if elapsed_s <= test_end_s:
         return "zero_hold", 0.0, False
     return "finished", 0.0, True
@@ -289,22 +290,23 @@ def run_test(args: argparse.Namespace) -> Path:
     output = Path(args.output) if args.output else Path("data") / f"velocity_tracking_{direction_deg:g}deg_{stamp}.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    ramp_up_s = (args.max_speed - args.start_speed) / args.accel
-    ramp_down_s = args.max_speed / args.decel
-    moving_duration_s = (
-        args.start_hold + ramp_up_s + args.peak_hold + ramp_down_s
-    )
+    moving_duration_s = args.start_hold + args.sine_duration
     expected_distance_m = (
         args.start_speed * args.start_hold
-        + (args.start_speed + args.max_speed) * 0.5 * ramp_up_s
-        + args.max_speed * args.peak_hold
-        + args.max_speed * 0.5 * ramp_down_s
+        + (args.start_speed + args.max_speed) * 0.5 * args.sine_duration
+    )
+    max_slope_mps2 = (
+        (args.max_speed - args.start_speed) * math.pi / args.sine_duration
     )
 
     print(f"方向: {direction_deg:g}°（0=前，90=左，180=后，270=右）")
     print(
-        f"目标: {args.start_speed:.3f} → {args.max_speed:.3f} → 0.000 m/s，"
-        f"加速/减速={args.accel:.3f}/{args.decel:.3f} m/s^2"
+        f"目标: {args.start_speed:.3f} → {args.max_speed:.3f} → "
+        f"{args.start_speed:.3f} → 0.000 m/s"
+    )
+    print(
+        f"正弦周期={args.sine_duration:.2f} s，最大速度斜率约 "
+        f"{max_slope_mps2:.3f} m/s^2"
     )
     print(
         f"预计运动约 {moving_duration_s:.2f} s、沿指定方向约 {expected_distance_m:.2f} m；"
@@ -350,10 +352,8 @@ def run_test(args: argparse.Namespace) -> Path:
                     elapsed_s,
                     args.start_speed,
                     args.max_speed,
-                    args.accel,
-                    args.decel,
+                    args.sine_duration,
                     args.start_hold,
-                    args.peak_hold,
                     args.zero_hold,
                 )
                 if finished:
@@ -362,7 +362,7 @@ def run_test(args: argparse.Namespace) -> Path:
                 target_vx = target_speed * unit_x
                 target_vy = target_speed * unit_y
                 # 本循环已经按 sample_rate 周期发送，不再启用后台10Hz重发，
-                # 避免两个发送源竞争并把较旧斜坡目标重新写回 STM32。
+                # 避免两个发送源竞争并把较旧正弦目标重新写回 STM32。
                 if not car.set_chassis_velocity(
                     target_vx,
                     target_vy,
