@@ -1,0 +1,63 @@
+# Python caches and bytecode
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+
+# Build and packaging artifacts
+**/build/
+**/dist/
+**/.eggs/
+**/*.egg-info/
+**/pip-wheel-metadata/
+
+# Virtual environments and local tool state
+.venv/
+venv/
+.exact_mppi/
+/env/
+.env
+.python-version
+.vscode/
+*.code-workspace
+
+# Test, lint, and notebook caches
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.hypothesis/
+**/.tox/
+**/.nox/
+**/.ipynb_checkpoints/
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs and OS files
+*.log
+*.log.*
+.DS_Store
+
+# Common experiment outputs and temporary results
+**/animation/
+**/animation_buffer/
+**/generated_envs/
+**/hybrid_obs/
+**/hybrid_obs_quick/
+**/ignored/
+**/outputs/
+**/output/
+**/results/
+**/artifacts/
+**/experiment_summary*.json
+**/result.json
+**/test.html
+**/test_animation.gif
+**/test_animation.mp4
+
+# Keep placeholder files when directories need to exist
+!.gitkeep
+
+*.mp4
+*.png
+*.csv
+*.gif

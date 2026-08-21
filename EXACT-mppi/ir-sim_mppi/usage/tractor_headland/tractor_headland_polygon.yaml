@@ -1,0 +1,79 @@
+world:
+  height: 20
+  width: 30
+  step_time: 0.1
+  sample_time: 0.1
+  offset: [-15, -5]
+  collision_mode: 'unobstructed' # 'stop'
+  control_mode: 'auto'
+  obstacle_map: 'headland_map.png'
+  mdownsample: 1
+
+robot:
+  - kinematics: {name: 'acker', mode: 'steer'}
+    # shape: {name: 'polygon', vertices: [[-0.5, 0.74], [2.85, 0.74], [2.85, -0.74], [-0.5, -0.74]], wheelbase: 1.9}
+    shape:
+      name: 'multipolygon'
+      vertices_list: [
+        # car
+        [[-0.5, 0.74], [2.85, 0.74], [2.85, -0.74], [-0.5, -0.74]],
+        # # mower
+        # [[-1.84, 0.75], [-0.84, 0.75], [-0.84, -0.75], [-1.84, -0.75]]
+        # # single pruner
+        # [[2.69, -0.299], [3.27, -0.299], [3.27, -1.499], [2.69, -1.499]]
+        # # kms sprayer
+        # [[-2.1, 0.5], [-1.1, 0.5], [-1.1, -0.5], [-2.1, -0.5]],
+        # [[-1.0, 2.15], [-0.5, 2.15], [-0.5, -2.15], [-1.0, -2.15]]
+        # double pruner
+        [[3.259, -0.175], [3.559, -0.175], [3.559, -1.5], [3.259, -1.5]],
+        [[3.259, 0.175], [3.559, 0.175], [3.559, 1.5], [3.259, 1.5]]    
+      ]
+      wheelbase: 1.9  
+    state: [4.0, 8.75, -3.1416, 0]
+    goal: [-3.5, 3.75, 0]
+    vel_max: [2.0, 0.55]
+    vel_min: [-2.0, -0.55] 
+    acce: [1.0, 1.0]
+    behavior: {name: 'dash'}
+    arrive_mode: 'position'
+    goal_threshold: 0.3
+    description: 'None'
+    plot:
+      show_trail: True
+      trail_freq: 2
+      trail_alpha: 0.5
+      trail_color: 'b'
+      show_trajectory: True
+      traj_color: 'g'
+      traj_width: 2.0
+      traj_alpha: 1.0
+
+      show_goal: True
+    
+
+    # sensors: 
+    #   - type: 'lidar2d'
+    #     range_min: 0
+    #     range_max: 10
+    #     angle_range: 6.283
+    #     number: 200
+    #     noise: False
+    #     offset: [0, 0, 0]
+    #     alpha: 0.3
+
+# obstacle:
+  # - shape: {name: 'circle', radius: 1.0}  # radius
+  #   state: [5, 15, 0]  
+
+  # - number: 10
+  #   distribution: {name: 'manual'}
+  #   shape:
+  #     - {name: 'polygon', random_shape: true, center_range: [5, 10, 40, 30], avg_radius_range: [0.5, 2]}  # radius
+
+  # - number: 10
+  #   distribution: {name: 'random', range_low: [10, 10, -3.14], range_high: [40, 40, 3.14]}
+  #   shape:
+  #     - {name: 'circle', radius: 0.4}  # radius
+  
+  
+  

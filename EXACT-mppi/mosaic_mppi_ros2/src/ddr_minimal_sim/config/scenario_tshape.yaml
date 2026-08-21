@@ -1,0 +1,67 @@
+# Scenario Configuration - T-Shape Robot with Static Obstacles
+# Based on third_party/AnyShape_Nav_MPPI/example/static_obs/env.yaml
+
+simulator:
+  ros__parameters:
+    # ========== Initial Pose ==========
+    # env.yaml state: [10, 42] - 5 = [5, 37]
+    initial_pose:
+      x: 5.0
+      y: 37.0
+      yaw: -1.5708         # -pi/2 (pointing down)
+
+    # ========== Simulation Settings ==========
+    update_frequency: 20.0
+    publish_rate: 20.0
+    enable_noise: false
+    noise_std_v: 0.01
+    noise_std_omega: 0.02
+
+    # ========== Vehicle Physical Dimensions ==========
+    # T-shape robot bounding box from vertices_list:
+    # x range: [-1.25, 1.75] -> length = 3.0
+    # y range: [-1.25, 1.75] -> width = 3.0
+    vehicle:
+      length: 3.0
+      width: 3.0
+      height: 1.0
+
+    # ========== Dynamics Constraints (Matches env.yaml) ==========
+    dynamics:
+      max_linear_velocity: 2.0        # Matches planner.yaml
+      max_angular_velocity: 2.0       # Relaxed for simulator
+      max_linear_acceleration: 1.0    # Matches planner.yaml
+      max_angular_acceleration: 2.0   # Matches planner.yaml
+    # ========== Visualization ==========
+    visualization:
+      show_trajectory: true
+      trajectory_length: 500
+
+environment:
+  ros__parameters:
+    map:
+      width: 100.0
+      height: 100.0
+      resolution: 0.1
+      generation_mode: 'file'
+      map_file: 'map_tshape.yaml'
+
+    visualization:
+      obstacle_height: 2.0
+      marker_alpha: 0.8
+
+laser_simulator:
+  ros__parameters:
+    # ========== Laser Scanner Parameters ==========
+    laser:
+      range_min: 0.15
+      range_max: 50.0              # env.yaml: sensors.range_max
+      angle_min: -3.14159
+      angle_max: 3.14159
+      angle_increment: 0.00872665   # ~720 rays for 2*pi
+      scan_time: 0.1
+      frame_id: 'base_link'
+
+    noise:
+      enable_noise: false
+      noise_std_dev: 0.01

@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+type: software
+message: "If you use IR-SIM in your work, please cite it as below."
+title: "IR-SIM: An open-source lightweight simulator for robot navigation, control, and learning"
+authors:
+  - name: "Anonymous Authors"
+contributors:
+  - name: "Contributors to IR-SIM"
+license: "MIT"

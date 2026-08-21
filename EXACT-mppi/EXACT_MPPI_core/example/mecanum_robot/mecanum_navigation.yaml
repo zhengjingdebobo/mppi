@@ -1,0 +1,78 @@
+simulation:
+  dt: 0.1
+  max_steps: 260
+  position_tolerance: 0.15
+  heading_tolerance: 0.15
+  stall_window_steps: 40
+  stall_min_progress: 0.05
+
+robot:
+  start_pose: [-4.0, -3.0, 0.0]
+  goal_pose: [3.2, 2.5, 1.5708]
+  length: 0.5
+  width: 0.4
+  velocity_limits:
+    vx_max: 1.0
+    vy_max: 1.0
+    wz_max: 1.5
+
+environment:
+  seed: 7
+  bounds: [-5.0, 5.0, -4.0, 4.0]
+  obstacle_count: 10
+  clearance: 0.35
+  circle_probability: 0.5
+  circle_radius_range: [0.30, 0.60]
+  rectangle_length_range: [0.55, 1.10]
+  rectangle_width_range: [0.45, 0.90]
+  connectivity_resolution: 0.20
+
+sensor:
+  range_min: 0.05
+  range_max: 3.5
+  field_of_view: 6.283185307179586
+  ray_count: 120
+  noise_std: 0.0
+  max_obstacle_points: 160
+
+mppi:
+  horizon_steps: 45
+  batch_size: 512
+  iteration_count: 2
+  temperature: 0.3
+  gamma: 0.015
+  ax_max: 2.0
+  ax_min: -2.0
+  ay_max: 2.0
+  ay_min: -2.0
+  az_max: 3.0
+  vx_std: 0.45
+  vy_std: 0.45
+  wz_std: 0.65
+  retry_attempt_limit: 1
+  open_loop: false
+  trajectory_validator:
+    collision_lookahead_time: 1.5
+    collision_margin_distance: 0.03
+
+cost:
+  goal: 12.0
+  heading: 4.0
+  control: 0.05
+  smooth: 0.2
+  obstacle:
+    cost_power: 1
+    repulsion_weight: 4.0
+    critical_weight: 60.0
+    collision_cost: 100000.0
+    collision_margin_distance: 0.20
+    near_goal_distance: 0.4
+    repulsion_distance: 1.2
+
+output:
+  trajectory_file: mecanum_navigation_trajectory.csv
+  figure_file: mecanum_navigation.png
+
+visualization:
+  animation_interval: 0.01
+  draw_every_n_steps: 1

@@ -1,0 +1,69 @@
+# Corridor Map from IR-Sim Example
+# Based on AnyShape_Nav_MPPI/example/corridor/env.yaml
+
+world:
+  width: 200.0
+  height: 200.0
+  offset: [0, 0.0]
+
+obstacles:
+  # 1. Top Wall: Rect 70x2 @ (30, 25, 0)
+  - shape:
+      type: 'rectangle'
+      length: 70.0
+      width: 2.0
+    pose:
+      x: 30.0
+      y: 25.0
+      yaw: 0.0
+
+  # 2. Bottom Wall: Rect 70x2 @ (30, 15, 0)
+  - shape:
+      type: 'rectangle'
+      length: 70.0
+      width: 2.0
+    pose:
+      x: 30.0
+      y: 15.0
+      yaw: 0.0
+
+  # 3. Vertical block: Rect 5x2 @ (10, 18.5, 1.57)
+  - shape:
+      type: 'rectangle'
+      length: 5.0
+      width: 2.0
+    pose:
+      x: 10.0
+      y: 18.5
+      yaw: 1.57
+
+  # 4. Vertical block: Rect 5x2 @ (23, 22.5, 1.57)
+  - shape:
+      type: 'rectangle'
+      length: 5.0
+      width: 2.0
+    pose:
+      x: 23.0
+      y: 22.5
+      yaw: 1.57
+
+  # 5. Angled block: Rect 6x2 @ (36, 17, 2.1)
+  - shape:
+      type: 'rectangle'
+      length: 6.0
+      width: 2.0
+    pose:
+      x: 36.0
+      y: 17.0
+      yaw: 2.1
+
+  # 6. Angled block: Rect 5x2 @ (50, 22, 4.3)
+  - shape:
+      type: 'rectangle'
+      length: 5.0
+      width: 2.0
+    pose:
+      x: 50.0
+      y: 22.0
+      yaw: 4.3
+

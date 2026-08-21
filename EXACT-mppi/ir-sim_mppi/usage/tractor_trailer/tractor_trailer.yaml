@@ -1,0 +1,80 @@
+world:
+  height: 50
+  width: 50
+  step_time: 0.1
+  sample_time: 0.1
+  offset: [5, 5]
+  collision_mode: 'unobstructed' # 'stop'
+  control_mode: 'auto'
+
+robot:
+  - kinematics: {name: 'tractor_trailer'}
+    shape:
+      name: 'tractor_trailer'
+      # tractor_vertices_list: [
+      #   [[-0.5, 0.74], [2.85, 0.74], [2.85, -0.74], [-0.5, -0.74]],
+      # ]
+      # trailer_vertices_list: [
+      #   [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+      # ]
+      # wheelbase: 1.9
+      # trailer_length: 3.24
+      # hitch_length: 0.5
+      wheelbase: 1.0
+      trailer_length: 1.5
+      hitch_length: 1.0
+    state: [5, 5, 0, 0]
+    goal: [40, 20, 1.5]
+    vel_max: [2.0, 0.55]
+    vel_min: [-2.0, -0.55] 
+    acce: [1.0, 1.0]
+    behavior: {name: 'dash'}
+    arrive_mode: 'position'
+    goal_threshold: 0.3
+    description: 'None'
+    plot:
+      show_trail: True
+      trail_freq: 0.5
+      trail_alpha: 0.5
+      trail_color: 'b'
+      show_trajectory: False
+      traj_color: 'g'
+      traj_width: 2.0
+      traj_alpha: 1.0
+
+      show_goal: True
+    
+
+    sensors: 
+      - type: 'lidar2d'
+        range_min: 0
+        range_max: 10
+        angle_range: 6.283
+        number: 200
+        noise: False
+        offset: [0, 0, 0]
+        alpha: 0.3
+
+# obstacle:
+#   - shape: {name: 'circle', radius: 1.0}  # radius
+#     state: [5, 15, 0]  
+
+#   - number: 10
+#     distribution: {name: 'manual'}
+#     shape:
+#       - {name: 'polygon', random_shape: true, center_range: [5, 10, 40, 30], avg_radius_range: [0.5, 2]}  # radius
+
+#   - number: 10
+#     distribution: {name: 'random', range_low: [10, 10, -3.14], range_high: [40, 40, 3.14]}
+#     shape:
+#       - {name: 'circle', radius: 0.4}  # radius
+
+obstacle:
+  - number: 5
+    distribution: {name: 'manual'}
+    state: [[18, 30], [31, 38], [10, 20], [40, 28], [20, 13], [16, 26], [10.5, 24.5], [18, 20], [16, 26], [19, 26], [10, 30]]
+    shape:
+      - {name: 'circle', radius: 1.0}  # radius
+      - {name: 'circle', radius: 1.0}  # radius
+  
+  

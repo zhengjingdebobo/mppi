@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'exact_mppi'
+version = "1.0"
+requires-python = ">= 3.10"
+description = "ExactMppi"
+readme = "README.md"
+dependencies = [
+    'numpy',
+    'jax',
+    'jaxlib',
+    'scipy',
+    'rich',
+    'dill',
+    'gctl==1.2',
+    'colorama',
+    'scikit-learn',
+    'pyyaml',
+    "ecos",
+    "pathfinding",
+    "opencv-python",
+    "matplotlib"
+]
+
+[project.optional-dependencies]
+irsim = ['ir-sim>=2.4.0']
+all = ['ir-sim>=2.4.0']
+
+[tool.setuptools.packages.find]
+include = ["exact_mppi*"]

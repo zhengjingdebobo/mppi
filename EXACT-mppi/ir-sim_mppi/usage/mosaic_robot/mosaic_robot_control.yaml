@@ -1,0 +1,65 @@
+world:
+  height: 50
+  width: 50
+  step_time: 0.1
+  sample_time: 0.1
+  offset: [5, 5]
+  collision_mode: 'stop'
+  control_mode: 'keyboard'  # 'keyboard', 'auto'
+  # obstacle_map: 'headland_multipoly/acker/headland_map.png'
+  # mdownsample: 1
+
+robot:
+  - kinematics: {name: 'acker', mode: 'steer'}
+    shape: 
+      name: 'mosaic'
+      vertices_list: [
+        [[-1, 1], [1, 1], [1, -1], [-1, -1]],
+        [[-2, 0.5], [-1, 0.5], [-1, -0.5], [-2, -0.5]],
+      ]
+      wheelbase: 1.6
+    state: [5, 5, 0, 0]
+    goal: [40, 40, 0]
+    vel_max: [8.0, 0.55]
+    vel_min: [-8.0, -0.55] 
+    # acce: [1.0, 1.0]
+    behavior: {name: 'dash'}
+    arrive_mode: 'state'
+    goal_threshold: 0.2
+    angle_tolerance: 0.1
+    description: 'None'
+    plot:
+      show_trail: True
+      trail_fill: False
+      trail_alpha: 0.5
+      trail_color: 'b'
+      show_trajectory: False
+      traj_color: 'g'
+      traj_width: 2.0
+      traj_alpha: 1.0
+      show_goal: False
+
+    sensors: 
+      - type: 'lidar2d'
+        range_min: 0
+        range_max: 50
+        angle_range: 6.283
+        number: 100
+        noise: False
+        offset: [0, 0, 0]
+        alpha: 0.3
+
+obstacle:
+  - number: 5
+    distribution: {name: 'manual'}
+    state: [[18, 30], [31, 38], [10, 20], [40, 28], [20, 13], [16, 26], [10.5, 24.5], [18, 20], [16, 26], [19, 26], [10, 30]]
+    shape:
+      - {name: 'circle', radius: 1.0}  # radius
+      - {name: 'circle', radius: 1.0}  # radius
+
+  # - number: 1
+  #   distribution: {name: 'manual'}
+  #   shape:
+  #     - {name: 'polygon', vertices: [[31, 24], [33, 24], [33, 28], [31, 28]]}
+    # state: 
+    #   - [0, 0, 0] 

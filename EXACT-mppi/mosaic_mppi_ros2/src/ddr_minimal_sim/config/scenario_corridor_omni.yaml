@@ -1,0 +1,57 @@
+# Scenario Configuration - Corridor Omni Motion
+
+simulator:
+  ros__parameters:
+    motion_model: omni
+
+    initial_pose:
+      x: 0.0
+      y: 20.0
+      yaw: 0.0
+
+    update_frequency: 30.0
+    publish_rate: 30.0
+    enable_noise: false
+    noise_std_v: 0.01
+    noise_std_vy: 0.01
+    noise_std_omega: 0.02
+
+    dynamics:
+      max_linear_velocity: 3.0
+      max_lateral_velocity: 3.0
+      max_angular_velocity: 3.0
+      max_linear_acceleration: 3.0
+      max_lateral_acceleration: 3.0
+      max_angular_acceleration: 3.0
+
+    visualization:
+      show_trajectory: true
+      trajectory_length: 500
+
+environment:
+  ros__parameters:
+    map:
+      width: 70.0
+      height: 23.0
+      resolution: 0.1
+      generation_mode: 'file'
+      map_file: 'corridor_mppi.yaml'
+
+    visualization:
+      obstacle_height: 2.0
+      marker_alpha: 0.8
+
+laser_simulator:
+  ros__parameters:
+    laser:
+      range_min: 0.0
+      range_max: 10.0
+      angle_min: -3.14159
+      angle_max: 3.14159
+      angle_increment: 0.06346652
+      scan_time: 0.1
+      frame_id: 'base_link'
+
+    noise:
+      enable_noise: false
+      noise_std_dev: 0.01

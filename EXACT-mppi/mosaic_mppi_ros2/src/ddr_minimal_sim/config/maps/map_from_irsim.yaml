@@ -1,0 +1,158 @@
+# Imported IR-SIM map using absolute object coordinates.
+
+world:
+  width: 100.0   # Slightly larger to fit everything comfortably (42+5+margin)
+  height: 100.0
+
+obstacles:
+  # ===== Boundary Walls =====
+  # Bottom (Lx=42, Ly=0.2, Center=(26, 5.1))
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 26.0
+      y: 5.1
+      yaw: 0.0
+
+  # Top (Lx=42, Ly=0.2, Center=(26, 46.9))
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 26.0
+      y: 46.9
+      yaw: 0.0
+
+  # Left (Lx=0.2, Ly=42, Center=(5.1, 26))
+  - shape:
+      type: 'rectangle'
+      length: 0.2
+      width: 42.0
+    pose:
+      x: 5.1
+      y: 26.0
+      yaw: 0.0 # Usually vertical rectangles are defined by length/width, but ddr_sim treats length as X-axis size if yaw=0? 
+               # Let's check maze_simple.yaml: "Left boundary... length: 10.0, width: 0.2, yaw: 1.5708".
+               # Ah, standard box is length along X. So for vertical wall, yaw=90 deg.
+               # Or just swap length/width and yaw=0.
+               # Let's stick to swapping length/width for simplicity if the parser supports it (it usually does).
+               # Actually, let's follow the reference style: Length=long dimension, Yaw=orientation.
+
+  # Left Wall (Vertical)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 5.1
+      y: 26.0
+      yaw: 1.5708
+
+  # Right Wall (Vertical)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 46.9
+      y: 26.0
+      yaw: 1.5708
+
+  # ===== Vertical Maze Walls =====
+  # Wall 1: Lx=3.36, Ly=16.8. Center=(19.7, 16.8). Vertical-ish block.
+  - shape:
+      type: 'rectangle'
+      length: 3.36
+      width: 16.8
+    pose:
+      x: 19.7
+      y: 16.8
+      yaw: 0.0
+
+  # Wall 2: Lx=0.84, Ly=16.8. Center=(34.4, 25.2).
+  - shape:
+      type: 'rectangle'
+      length: 0.84
+      width: 10.8
+    pose:
+      x: 34.4
+      y: 25.2
+      yaw: 0.0
+
+  # ===== Horizontal Maze Walls =====
+  # Wall 1: Lx=12.6, Ly=0.84. Center=(15.5, 34.4).
+  - shape:
+      type: 'rectangle'
+      length: 12.6
+      width: 0.84
+    pose:
+      x: 15.5
+      y: 34.4
+      yaw: 0.0
+
+  # Wall 2: Lx=12.6, Ly=0.84. Center=(36.5, 17.6).
+  - shape:
+      type: 'rectangle'
+      length: 12.6
+      width: 0.84
+    pose:
+      x: 36.5
+      y: 17.6
+      yaw: 0.0
+
+  # ===== Small Walls =====
+  # Wall 1: Lx=0.84, Ly=10.5. Center=(11.3, 26).
+  - shape:
+      type: 'rectangle'
+      length: 0.84
+      width: 10.5
+    pose:
+      x: 11.3
+      y: 26.0
+      yaw: 0.0
+
+  # Wall 2: Lx=0.84, Ly=10.5. Center=(40.7, 26).
+  - shape:
+      type: 'rectangle'
+      length: 0.84
+      width: 10.5
+    pose:
+      x: 40.7
+      y: 26.0
+      yaw: 0.0
+
+  # ===== Circular Obstacles =====
+  - shape:
+      type: 'circle'
+      radius: 1.47
+    pose:
+      x: 26.0
+      y: 26.0
+      yaw: 0.0
+
+  - shape:
+      type: 'circle'
+      radius: 1.05
+    pose:
+      x: 13.4
+      y: 40.7
+      yaw: 0.0
+
+  - shape:
+      type: 'circle'
+      radius: 1.26
+    pose:
+      x: 40.7
+      y: 13.4
+      yaw: 0.0
+
+  - shape:
+      type: 'circle'
+      radius: 1.05
+    pose:
+      x: 40.7
+      y: 40.7
+      yaw: 0.0

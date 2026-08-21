@@ -1,0 +1,127 @@
+MPPI:
+  motion_model_name: 'diff'
+  model_dt: 0.1
+  time_steps: 80
+  batch_size: 1000
+  iteration_count: 1
+  temperature: 0.3
+  gamma: 0.015
+  vx_max: 3.0
+  vx_min: -3.0
+  wz_max: 3.0
+  ax_max: 2.0
+  ax_min: -2.0
+  az_max: 2.0
+  vx_std: 0.5
+  wz_std: 2.0
+  retry_attempt_limit: 1
+  open_loop: False
+  seed: 0
+  debug: True
+
+  max_obs_num: 100
+
+  TrajectoryValidator:
+    collision_lookahead_time: 2.0
+    collision_margin_distance: 0.01
+
+  Critics:
+    ConstraintCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 4.0
+    GoalCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 5.0
+      threshold_to_consider: 1.4
+    GoalAngleCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 3.0
+      threshold_to_consider: 0.5
+    ObstaclesCritic:
+      enabled: True
+      cost_power: 1
+      repulsion_weight: 5.0
+      critical_weight: 30.0
+      collision_cost: 100000.0
+      collision_margin_distance: 0.25
+      near_goal_distance: 0.5
+      repulsion_distance: 5.0
+    PathAlignCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 4.0
+      max_path_occupancy_ratio: 0.07
+      trajectory_point_step: 4
+      threshold_to_consider: 0.5
+      offset_from_furthest: 20
+      use_path_orientation: False
+    PathFollowCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 5.0
+      offset_from_furthest: 12
+      threshold_to_consider: 0.5
+    PathAngleCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 2.2
+      offset_from_furthest: 4
+      threshold_to_consider: 0.5
+      max_angle_to_furthest: 0.785398
+      mode: 1
+    PreferForwardCritic:
+      enabled: False
+      cost_power: 1
+      cost_weight: 5.0
+      threshold_to_consider: 0.5
+    VelocityDeadbandCritic:
+      enabled: False
+      cost_power: 1
+      cost_weight: 35.0
+      deadband_velocities: [0.0, 0.0, 0.0]
+    TwirlingCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 5.0
+      pose_tolerance: 0.1
+
+  # T shape
+  # footprint_type: 'rectangle'
+  # vertices: [
+  #   [[-0.9, 1.2],[-0.6, 1.2],[0.9, 0.3],[0.9, -0.3],[-0.6, -1.2],[-0.9, -1.2]]
+  # ]
+  
+  # star shape 
+  footprint_type: 'polygon'
+  vertices: [
+      [[-0.040, -1.240],
+      [0.280, -0.280],
+      [1.240, -0.280],
+      [0.440, 0.200],
+      [0.760, 1.160],
+      [-0.040, 0.520],
+      [-0.840, 1.160],
+      [-0.520, 0.200],
+      [-1.320, -0.280],
+      [-0.360, -0.280],
+      [-0.040, -1.240]]]
+
+  # F shape
+  # footprint_type: 'rectangle'
+  # vertices: [
+  #     [[-0.400, 1.000], [-0.800, 1.000], [-0.800, -1.000], [-0.400, -1.000]],
+  #     [[0.800, 1.000], [-0.800, 1.000], [-0.800, 0.600], [0.800, 0.600]],
+  #     [[0.400, 0.200], [-0.800, 0.200], [-0.800, -0.200], [0.400, -0.200]]
+  #   ]
+  wheelbase: 1.52
+  min_turning_r: 2.6
+
+reference_path:
+  enabled: True
+  path_type: 'line'
+  grid_resolution: 0.5
+  grid_inflation: 0.5
+  weight: 0.01

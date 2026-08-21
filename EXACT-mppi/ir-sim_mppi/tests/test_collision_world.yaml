@@ -1,0 +1,59 @@
+world:
+  height: 10  # the height of the world
+  width: 10   # the width of the world
+  step_time: 0.1  # 10Hz calculate each step
+  sample_time: 0.1  # 10 Hz for render and data extraction 
+  offset: [0, 0] # the offset of the world on x and y 
+  collision_mode: 'unobstructed_obstacles'  # 'stop', 'unobstructed', 'unobstructed_obstacles'
+  control_mode: 'auto'  # 'keyboard', 'auto'
+
+robot:
+  - kinematics: {name: 'diff'}  # omni, diff, acker
+    shape: {name: 'circle', radius: 0.2}  # radius
+    # shape: {name: 'rectangle', length: 0.5, width: 0.2}  # radius
+    state: [1, 1, 0]  
+    goal: [9, 9, 0] 
+    # acce: [3, .inf]   # acce of [linear, angular]  or [v_x, v_y] or [linear, steer]
+    behavior: {name: 'dash'} # move toward to the goal directly
+
+  - number: 100
+    kinematics: {name: 'omni'}  
+    shape: {name: 'circle', radius: 1.0}  
+    distribution: {name: 'random', range_low: [-100, -100, -3.14], range_high: [100, 100, 3.14]}
+    color: 'g'
+    goal_threshold: 0.1
+    vel_max: [3, 3]
+    vel_min: [-3, -3]
+    plot:
+      show_trajectory: True
+      show_goal: True
+      keep_traj_length: 50
+    group_behavior: 
+      name: 'orca' 
+      neighborDist: 15.0 
+      maxNeighbors: 10
+      timeHorizon: 20.0
+      timeHorizonObst: 10.0
+      safe_radius: 0.5
+      maxSpeed: 2.0
+      wander: True
+      range_low: [-100, -100, -3.14]
+      range_high: [100, 100, 3.14] 
+  
+obstacle:
+  - shape: {name: 'circle', radius: 1.0}  # radius
+    state: [5, 5, 0]  
+   
+  - shape: {name: 'rectangle', length: 1.5, width: 1.2}  # radius
+    state: [6, 5, 1] 
+  
+  - number: 2
+    distribution: {name: 'circle', radius: 2.0, center: [5, 5]} 
+    kinematics: {name: 'omni'}
+    behavior: {name: 'rvo'}
+    shape: {name: 'circle', radius: 1.0}  # radius
+    state: [5, 5, 0]  
+    
+
+  # - shape: {name: 'circle', radius: 0.4}  # radius
+  #   state: [1, 1, 0] 

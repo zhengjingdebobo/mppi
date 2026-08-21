@@ -1,0 +1,133 @@
+[build-system]
+requires = ["setuptools>=61.0",
+            ]
+                   
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ir-sim"
+version = "2.8.2"
+authors = [
+  { name="Anonymous Maintainer", email="anonymous@example.com" },
+]
+description = "IR-SIM is an open-source, lightweight robot simulator based on Python, designed for robotics navigation, control, and learning. This simulator provides a simple and user-friendly framework for simulating robots, sensors, and environments, facilitating the development and testing of robotics algorithms with minimal hardware requirements."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+keywords = ["robotics", "simulation", "navigation", "control", "learning"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    'matplotlib',
+    'shapely>=2.0.3',
+    'numpy',
+    'pyyaml',
+    'imageio',
+    'loguru',
+    'scipy',
+]
+
+[project.optional-dependencies]
+keyboard = ['pynput']
+all = ['pynput', 'imageio[ffmpeg]', 'pyrvo']
+
+[dependency-groups]
+docs = [
+    "importlib-metadata>=8.7.0",
+    "myst-parser>=3.0.1",
+    "pydata-sphinx-theme>=0.16.1",
+    "pynput>=1.8.1",
+    "sphinx>=7.4.7",
+    "sphinx-autoapi>=3.6.0",
+    "sphinx-autodoc-typehints>=2.3.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-design>=0.6.1",
+    "sphinx-inline-tabs>=2023.4.21",
+    "sphinx-multiversion>=0.2.4",
+    "sphinx-rtd-theme>=3.0.2",
+    "sphinx-intl>=2.3.2",
+]
+lint = [
+    "black>=25.1.0",
+    "ruff>=0.12.8",
+    "ty>=0.0.1a17",
+]
+test = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+]
+
+dev = [
+    {include-group = "lint"},
+    {include-group = "test"},
+    "pre-commit==4.3.0",
+    "ty>=0.0.1a17",
+]
+
+
+[tool.setuptools.packages.find]
+include = ["irsim*"]
+exclude = ["docs*", "tests*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.png", "*.yaml"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+# Optional: keep docs/examples out of lint (adjust as you like)
+extend-exclude = ["docs/source/conf.py"]
+
+[tool.ruff.lint]
+# Baseline: correctness + PEP8 + imports + modernize + common bugs + sensible cleanups
+select = [
+  "F",    # pyflakes: undefined/unused/etc.
+  "E", "W",  # pycodestyle: basic style
+  "I",    # isort: import sorting
+  "UP",   # pyupgrade: modernize for py39+
+  "B",    # flake8-bugbear: common pitfalls
+  "RUF",  # Ruff-specific rules
+  "C4",   # comprehensions
+  "SIM",  # simplify
+  "ISC",  # implicit string concat
+  "RET",  # return statements
+  "PT"    # pytest-style (tests/)
+]
+
+# If you use Black or Ruff's formatter, don't fail on long lines.
+ignore = ["E501", "UP045", "UP007"]
+
+# Typical import sorting tweak: treat "irsim" as first-party.
+[tool.ruff.lint.isort]
+known-first-party = ["irsim"]
+
+# Common, intentional re-exports in package __init__.py
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ty.src]
+include = ["irsim"]
+exclude = ["docs", "tests"]
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+possibly-unbound-import = "error"
+invalid-argument-type = "ignore"
+unresolved-import = "ignore"
+redundant-cast = "ignore"
+unresolved-attribute = "ignore"
+possibly-unbound-attribute = "ignore"
+
+[project.urls]
+"Homepage" = "https://ir-sim.readthedocs.io/en/stable/"
+"Documentation" = "https://ir-sim.readthedocs.io/en/stable/"

@@ -1,0 +1,123 @@
+MPPI:
+  motion_model_name: 'diff'
+  model_dt: 0.05
+  time_steps: 100
+  batch_size: 1000
+  iteration_count: 1
+  temperature: 0.3
+  gamma: 0.015
+  vx_max: 6.0
+  vx_min: -6.0
+  # vy_max: 0.5
+  wz_max: 2.0
+  ax_max: 4.0
+  ax_min: -4.0
+  # ay_max: 3.0
+  # ay_min: -3.0
+  az_max: 2.0
+  vx_std: 1.5
+  # vy_std: 0.2
+  wz_std: 2.0
+  retry_attempt_limit: 1
+  open_loop: False
+  seed: 0
+  debug: True
+
+  max_obs_num: 100
+  
+  TrajectoryValidator:
+    collision_lookahead_time: 3.0
+    collision_margin_distance: 0.01
+  
+  Critics:
+    ConstraintCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 4.0
+    GoalCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 5.0
+      threshold_to_consider: 1.0
+    GoalAngleCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 3.0
+      threshold_to_consider: 0.5
+    ObstaclesCritic:
+      enabled: True
+      cost_power: 1
+      repulsion_weight: 3.0
+      critical_weight: 30.0
+      collision_cost: 100000.0
+      collision_margin_distance: 0.1
+      near_goal_distance: 0.5
+      repulsion_distance: 5.0
+    PathAlignCritic:
+      enabled: False
+      cost_power: 1
+      cost_weight: 4.0
+      max_path_occupancy_ratio: 0.07
+      trajectory_point_step: 4
+      threshold_to_consider: 0.5
+      offset_from_furthest: 15
+      use_path_orientation: False
+    PathFollowCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 8.0
+      offset_from_furthest: 10
+      threshold_to_consider: 1.0
+    PathAngleCritic:
+      enabled: False
+      cost_power: 1
+      cost_weight: 2.2
+      offset_from_furthest: 4
+      threshold_to_consider: 0.5
+      max_angle_to_furthest: 0.785398
+      mode: 1 # 0: FORWARD_PREFERENCE, 1: NO_DIRECTIONAL_PREFERENCE, 2: CONSIDER_FEASIBLE_PATH_ORIENTATIONS
+    PreferForwardCritic:
+      enabled: False
+      cost_power: 1
+      cost_weight: 5.0
+      threshold_to_consider: 0.5
+    VelocityDeadbandCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 35.0
+      deadband_velocities: [0.0, 0.0, 0.0]
+    TwirlingCritic:
+      enabled: True
+      cost_power: 1
+      cost_weight: 5.0
+      pose_tolerance: 0.1
+  vertices: [
+    # T shape vertical
+      [[0.900, 0.300], [-0.900, 0.300], [-0.900, -0.300], [0.900, -0.300]],
+      [[-0.600, 1.200], [-0.900, 1.200], [-0.900, -1.200], [-0.600, -1.200]]
+    # T shape convex
+      # [[-0.9, 1.2],[-0.6, 1.2],[0.9, 0.3],[0.9, -0.3],[-0.6, -1.2],[-0.9, -1.2]]
+    ]
+  mosaic_unit_vertices: [[-1., 1.], [1., 1.], [1., -1.], [-1., -1.]]
+  wheelbase: 1.6
+  min_turning_r: 2.6
+
+# Reference path tracking
+reference_path:
+  enabled: True              # Enable reference path tracking cost
+  path_type: 'astar'
+  grid_resolution: 0.5
+  grid_inflation: 0.5
+  weight: 0.01               # Weight for reference trajectory tracking cost
+  # A* grid map parameters (only used when path_type='astar')
+  grid_resolution: 0.5       # Grid resolution in meters per cell
+  grid_inflation: 0.5        # Obstacle inflation radius in meters (safety margin)
+
+# Visualization settings
+visualization:
+  show_global_reference_line: True   # Black dashed line (complete planned route)
+  show_local_plan: True               # Blue solid line (current reference window)
+  show_rollouts: False                # Light cyan sampled trajectories from MPPI
+  show_optimal_trajectory: True      # Red trajectory (best rollout)
+  show_cost_points: True              # Magenta points from active critics
+  show_lidar: True                    # Green points from LiDAR

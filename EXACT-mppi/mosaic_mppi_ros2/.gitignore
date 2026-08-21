@@ -1,0 +1,13 @@
+build/
+log/
+install/
+temp/
+*.tmp
+*.log
+*.bak
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class       

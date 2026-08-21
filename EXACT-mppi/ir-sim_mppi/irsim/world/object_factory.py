@@ -1,0 +1,293 @@
+from typing import Any, Optional, Union
+
+import numpy as np
+
+from irsim.util.random import rng
+from irsim.util.util import (
+    convert_list_length,
+    convert_list_length_dict,
+)
+from irsim.world.map.obstacle_map import ObstacleMap
+from irsim.world.obstacles.obstacle_acker import ObstacleAcker
+from irsim.world.obstacles.obstacle_diff import ObstacleDiff
+from irsim.world.obstacles.obstacle_omni import ObstacleOmni
+from irsim.world.obstacles.obstacle_static import ObjectStatic
+from irsim.world.robots.robot_acker import RobotAcker
+from irsim.world.robots.robot_diff import RobotDiff
+from irsim.world.robots.robot_omni import RobotOmni
+from irsim.world.robots.robot_tractor_trailer import RobotTractorTrailer
+from irsim.world.robots.robot_rangerminiv3 import RobotRangerMiniV3
+
+# from irsim.world.robots.robot_rigid3d import RobotRigid3D
+
+
+class ObjectFactory:
+    """
+    Factory class for creating various objects in the simulation.
+    """
+
+    def create_from_parse(
+        self,
+        parse: Union[list[dict[str, Any]], dict[str, Any]],
+        obj_type: str = "robot",
+        group_start_index: int = 0,
+    ) -> list[Any]:
+        """
+        Create objects from a parsed configuration.
+
+        Args:
+            parse (list or dict): Parsed configuration data.
+            obj_type (str): Type of object to create, 'robot' or 'obstacle'.
+            group_start_index (int): Starting index for the group.
+
+        Returns:
+            list: List of created objects.
+        """
+        object_list = []
+
+        if isinstance(parse, list):
+            object_list = [
+                obj
+                for group_index, sp in enumerate(parse)
+                for obj in self.create_object(
+                    obj_type, **{"group": group_start_index + group_index, **sp}
+                )
+            ]
+
+        elif isinstance(parse, dict):
+            object_list = list(self.create_object(obj_type, **parse))
+
+        return object_list
+
+    def create_from_map(self, points: np.ndarray, reso: float = 0.1) -> list[Any]:
+        """
+        Create map objects from points.
+
+        Args:
+            points (list): List of points.
+            reso (float): Resolution of the map.
+
+        Returns:
+            list: List of ObstacleMap objects.
+        """
+        if points is None:
+            return []
+        return [
+            ObstacleMap(
+                shape={"name": "map", "points": points, "reso": reso}, color="k"
+            )
+        ]
+
+    def create_object(
+        self,
+        obj_type: str = "robot",
+        number: int = 1,
+        distribution: Optional[dict[str, Any]] = None,
+        state: Optional[list[float]] = None,
+        goal: Optional[list[float]] = None,
+        **kwargs: Any,
+    ) -> list[Any]:
+        """
+        Create multiple objects based on the parameters.
+
+        Args:
+            obj_type (str): Type of object, 'robot' or 'obstacle'.
+            number (int): Number of objects to create.
+            distribution (dict): Distribution type for generating states.
+            state (list): Initial state for objects.
+            goal (list): Goal state for objects.
+            **kwargs: Additional parameters for object creation.
+
+        Returns:
+            list: List of created objects.
+        """
+        if distribution is None:
+            distribution = {"name": "manual"}
+        if state is None:
+            state = [1, 1, 0]
+
+        if not distribution.get("3d", False):
+            state_list, goal_list = self.generate_state_list(
+                number, distribution, state, goal
+            )
+        else:
+            state_list, goal_list = self.generate_state_list3D(
+                number, distribution, state, goal
+            )
+
+        object_list = []
+
+        for i in range(number):
+            obj_dict = {
+                k: convert_list_length(v, number)[i]
+                for k, v in kwargs.items()
+                if k != "sensors"
+            }
+            obj_dict["state"] = state_list[i]
+            obj_dict["goal"] = goal_list[i]
+            sensors: list[Any] = kwargs.get("sensors") or []
+            obj_dict["sensors"] = convert_list_length_dict(sensors, number)[i]
+
+            if obj_type == "robot":
+                object_list.append(self.create_robot(**obj_dict))
+            elif obj_type == "obstacle":
+                object_list.append(self.create_obstacle(**obj_dict))
+
+        return object_list
+
+    def create_robot(
+        self, kinematics: Optional[dict[str, Any]] = None, **kwargs: Any
+    ) -> Any:
+        """
+        Create a robot based on kinematics.
+
+        Args:
+            kinematics (dict): Kinematics configuration.
+            **kwargs: Additional parameters for robot creation.
+
+        Returns:
+            Robot: An instance of a robot.
+        """
+        if kinematics is None:
+            kinematics = {}
+        kinematics_name = kinematics.get("name")
+
+        if kinematics_name == "diff":
+            return RobotDiff(kinematics=kinematics, **kwargs)
+        if kinematics_name == "acker":
+            return RobotAcker(kinematics=kinematics, **kwargs)
+        if kinematics_name == "omni":
+            return RobotOmni(kinematics=kinematics, **kwargs)
+        if kinematics_name == "tractor_trailer":
+            return RobotTractorTrailer(kinematics=kinematics, **kwargs)
+        if kinematics_name == "rangerminiv3":
+            return RobotRangerMiniV3(kinematics=kinematics, **kwargs)
+        if kinematics_name == "static" or kinematics_name is None:
+            return ObjectStatic(kinematics=kinematics, role="robot", **kwargs)
+        # elif kinematics_name == "rigid3d":
+        #     return RobotRigid3D(kinematics=kinematics, **kwargs)
+        raise NotImplementedError(f"Robot kinematics {kinematics_name} not implemented")
+
+    def create_obstacle(
+        self, kinematics: Optional[dict[str, Any]] = None, **kwargs: Any
+    ) -> Any:
+        """
+        Create a obstacle based on kinematics.
+
+        Args:
+            kinematics (dict): Kinematics configuration.
+            **kwargs: Additional parameters for robot creation.
+
+        Returns:
+            Obstacle: An instance of an obstacle.
+        """
+        if kinematics is None:
+            kinematics = {}
+        kinematics_name = kinematics.get("name")
+
+        if kinematics_name == "diff":
+            return ObstacleDiff(kinematics=kinematics, **kwargs)
+        if kinematics_name == "acker":
+            return ObstacleAcker(kinematics=kinematics, **kwargs)
+        if kinematics_name == "omni":
+            return ObstacleOmni(kinematics=kinematics, **kwargs)
+        if kinematics_name == "static" or kinematics_name is None:
+            return ObjectStatic(kinematics=kinematics, role="obstacle", **kwargs)
+        raise NotImplementedError(f"Robot kinematics {kinematics_name} not implemented")
+
+    def generate_state_list(
+        self,
+        number: int = 1,
+        distribution: Optional[dict[str, Any]] = None,
+        state: Optional[list[float]] = None,
+        goal: Optional[list[float]] = None,
+    ) -> tuple[list[list[float]], list[list[float]]]:
+        """
+        Generate a list of state vectors for multiple objects based on the specified distribution method.
+
+        This function creates initial states for multiple objects in the simulation environment.
+        It supports various distribution methods such as 'manual', 'circle', and 'random' to
+        position the objects according to specific patterns or randomness.
+
+        Args:
+            number (int):
+                Number of state vectors to generate. Default is 1.
+            distribution (Dict[str, Any]):
+                Configuration dictionary specifying the distribution method and its parameters.
+                Default is {"name": "manual"}.
+            state (List[float]):
+                Base state vector [x, y, theta] to use as a template for generating states.
+                Default is [1, 1, 0].
+            goal (List[float]):
+                Goal state vector [x, y, theta] for the generated objects.
+                Default is [1, 9, 0].
+
+                - 'name' (str): Name of the distribution method. Supported values are:
+
+                  - 'manual': States are specified manually.
+                  - 'circle': States are arranged in a circular pattern.
+                  - 'random': States are placed at random positions.
+
+                - Additional parameters depend on the distribution method:
+
+                  - For 'manual': Manually specified states and goal.
+                  - For 'circle':
+
+                    - 'center' (List[float]): Center coordinates [x, y] of the circle.
+                    - 'radius' (float): Radius of the circle.
+
+                  - For 'random':
+
+                    - 'range_low' (List[float]): Lower bounds for random state values.
+                    - 'range_high' (List[float]): Upper bounds for random state values.
+
+        Returns:
+            tuple[list[list[float]], list[list[float]]]:
+                A pair ``(state_list, goal_list)`` where each element is a list of
+                3-element state vectors ``[x, y, theta]`` for every generated object.
+
+        Raises:
+            ValueError:
+                If the distribution method specified in 'name' is not supported or if required
+                parameters for a distribution method are missing.
+        """
+        if distribution is None:
+            distribution = {"name": "manual"}
+        if state is None:
+            state = [1, 1, 0]
+        if goal is None:
+            goal = [1, 9, 0]
+
+        if distribution["name"] == "manual":
+            state_list = convert_list_length(state, number)
+            goal_list = convert_list_length(goal, number)
+
+        elif distribution["name"] == "random":
+            range_low = distribution.get("range_low", [0, 0, -np.pi])
+            range_high = distribution.get("range_high", [10, 10, np.pi])
+
+            state_array = rng.uniform(low=range_low, high=range_high, size=(number, 3))
+            state_list = state_array.tolist()
+
+            goal_array = rng.uniform(low=range_low, high=range_high, size=(number, 3))
+            goal_list = goal_array.tolist()
+
+        elif distribution["name"] == "uniform":
+            pass
+
+        elif distribution["name"] == "circle":
+            radius = distribution.get("radius", 4)
+            center = distribution.get("center", [5, 5, 0])
+
+            state_list, goal_list = [], []
+            for i in range(number):
+                theta = 2 * np.pi * i / number
+                x = center[0] + radius * np.cos(theta)
+                y = center[1] + radius * np.sin(theta)
+                state_list.append([x, y, theta - np.pi])
+
+                goal_x = center[0] - radius * np.cos(theta)
+                goal_y = center[1] - radius * np.sin(theta)
+                goal_list.append([goal_x, goal_y, theta - np.pi])
+
+        return state_list, goal_list

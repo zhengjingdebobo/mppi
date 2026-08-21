@@ -1,0 +1,12 @@
+import irsim
+
+env = irsim.make("mosaic_robot_control.yaml", save_ani=False, full=False)
+
+for _i in range(30000):
+    env.step()
+    env.render(0.05, show_goal=False, show_trajectory=True)
+
+    if env.done():
+        break
+
+env.end(3)

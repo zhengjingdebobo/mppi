@@ -1,0 +1,98 @@
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+ENV ROS_DISTRO=humble
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# Change Ubuntu 22.04 apt source to Tsinghua mirror to speed up downloads
+# RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list && \
+#    sed -i 's|http://security.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list
+
+# Basic system dependencies
+RUN apt-get update && apt-get install -y \
+    locales \
+    curl \
+    gnupg2 \
+    lsb-release \
+    software-properties-common \
+    build-essential \
+    git \
+    wget \
+    vim \
+    nano \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    python3-tk \
+    python3-pil.imagetk \
+    && locale-gen en_US en_US.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add ROS 2 Humble apt repository
+RUN add-apt-repository universe && \
+    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+    http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
+    > /etc/apt/sources.list.d/ros2.list
+
+# Install ROS 2 Humble, Gazebo/RViz simulation tools, dependencies, and colcon
+RUN apt-get update && apt-get install -y \
+    ros-humble-ros-base \
+    gazebo \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-plugins \
+    ros-humble-gazebo-msgs \
+    ros-humble-xacro \
+    ros-humble-rviz2 \
+    ros-humble-joint-state-publisher \
+    ros-humble-joint-state-publisher-gui \
+    ros-humble-robot-state-publisher \
+    ros-humble-tf-transformations \
+    ros-humble-tf2-tools \
+    ros-humble-tf2-ros \
+    ros-humble-tf2-geometry-msgs \
+    ros-humble-nav-msgs \
+    ros-humble-sensor-msgs \
+    ros-humble-geometry-msgs \
+    ros-humble-visualization-msgs \
+    libeigen3-dev \
+    libyaml-cpp-dev \
+    cmake \
+    python3-rosdep \
+    python3-argcomplete \
+    python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rosdep init || true
+RUN rosdep update || true
+
+ENV VIRTUAL_ENV=/opt/exact_mppi/venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+# (Add --system-site-packages and pip install lxml directly):
+RUN python3 -m venv --system-site-packages "$VIRTUAL_ENV" && \
+    python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir lxml
+
+# Cache Python runtime dependencies before copying local source.
+RUN python -m pip install --no-cache-dir -U "jax[cuda12]" lxml
+
+WORKDIR /workspace/EXACT-mppi
+
+COPY ir-sim_mppi/pyproject.toml ir-sim_mppi/README.md ir-sim_mppi/LICENSE ./ir-sim_mppi/
+COPY ir-sim_mppi/irsim ./ir-sim_mppi/irsim
+RUN python -m pip install --no-cache-dir -e ./ir-sim_mppi
+
+COPY EXACT_MPPI_core/pyproject.toml EXACT_MPPI_core/README.md EXACT_MPPI_core/LICENSE ./EXACT_MPPI_core/
+COPY EXACT_MPPI_core/exact_mppi ./EXACT_MPPI_core/exact_mppi
+RUN python -m pip install --no-cache-dir -e ./EXACT_MPPI_core
+
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+    echo "source ${VIRTUAL_ENV}/bin/activate" >> /root/.bashrc
+
+CMD ["/bin/bash"]

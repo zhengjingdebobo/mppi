@@ -1,0 +1,151 @@
+# T-Shape Obstacle Map
+# Based on third_party/AnyShape_Nav_MPPI/example/static_obs/env.yaml
+# World: 42x42, wall corner at (0,0), obstacles use original coords
+
+world:
+  width: 100.0
+  height: 100.0
+
+obstacles:
+  # ===== Boundary Walls =====
+  # Bottom wall (y=0)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 21.0
+      y: 0.1
+      yaw: 0.0
+
+  # Top wall (y=42)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 21.0
+      y: 41.9
+      yaw: 0.0
+
+  # Left wall (x=0, vertical)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 0.1
+      y: 21.0
+      yaw: 1.5708
+
+  # Right wall (x=42, vertical)
+  - shape:
+      type: 'rectangle'
+      length: 42.0
+      width: 0.2
+    pose:
+      x: 41.9
+      y: 21.0
+      yaw: 1.5708
+
+  # ===== Circular Obstacles from env.yaml (all coords -5) =====
+  # [20, 34] -> [15, 29], circle radius 1.5
+  - shape:
+      type: 'circle'
+      radius: 1.5
+    pose:
+      x: 15.0
+      y: 29.0
+      yaw: 0.0
+
+  # [31, 38] -> [26, 33], circle radius 1.5
+  - shape:
+      type: 'circle'
+      radius: 1.5
+    pose:
+      x: 26.0
+      y: 33.0
+      yaw: 0.0
+
+  # [10, 20] -> [5, 15], circle radius 1.5
+  - shape:
+      type: 'circle'
+      radius: 1.5
+    pose:
+      x: 5.0
+      y: 15.0
+      yaw: 0.0
+
+  # [41, 25] -> [36, 20], circle radius 1.5
+  - shape:
+      type: 'circle'
+      radius: 1.5
+    pose:
+      x: 36.0
+      y: 20.0
+      yaw: 0.0
+
+  # [20, 13] -> [15, 8], circle radius 1.5
+  - shape:
+      type: 'circle'
+      radius: 1.5
+    pose:
+      x: 15.0
+      y: 8.0
+      yaw: 0.0
+
+  # [16, 26] -> [11, 21], circle radius 1.0
+  - shape:
+      type: 'circle'
+      radius: 1.0
+    pose:
+      x: 11.0
+      y: 21.0
+      yaw: 0.0
+
+  # [10.5, 24.5] -> [5.5, 19.5], circle radius 1.0
+  - shape:
+      type: 'circle'
+      radius: 1.0
+    pose:
+      x: 5.5
+      y: 19.5
+      yaw: 0.0
+
+  # [18, 20] -> [13, 15], circle radius 1.0
+  - shape:
+      type: 'circle'
+      radius: 1.0
+    pose:
+      x: 13.0
+      y: 15.0
+      yaw: 0.0
+
+  # [19, 26] -> [14, 21], circle radius 1.0
+  - shape:
+      type: 'circle'
+      radius: 1.0
+    pose:
+      x: 14.0
+      y: 21.0
+      yaw: 0.0
+
+  # [10, 30] -> [5, 25], circle radius 1.0
+  - shape:
+      type: 'circle'
+      radius: 1.0
+    pose:
+      x: 5.0
+      y: 25.0
+      yaw: 0.0
+
+  # ===== Polygon Obstacle from env.yaml =====
+  # center (32, 26) -> (27, 21)
+  - shape:
+      type: 'rectangle'
+      length: 2.0
+      width: 4.0
+    pose:
+      x: 27.0
+      y: 21.0
+      yaw: 0.0

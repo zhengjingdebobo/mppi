@@ -1,0 +1,58 @@
+world:
+  height: 20
+  width: 30
+  step_time: 0.1
+  sample_time: 0.1
+  offset: [-15, -5]
+  collision_mode: 'stop'
+  control_mode: 'auto'
+  obstacle_map: 'headland_map.png'
+  mdownsample: 1
+
+robot:
+  - kinematics: {name: 'acker', mode: 'steer'}
+    shape: {name: 'rectangle', length: 3.35, width: 1.48, wheelbase: 1.9}
+    state: [1.54286108, 8.75, -3.1416, 0]
+    goal: [0.66122618, 3.75, 0]
+    vel_max: [2.0, 0.55]
+    vel_min: [-2.0, -0.55] 
+    acce: [1.0, 1.0]
+    behavior: {name: 'dash'}
+    arrive_mode: 'position'
+    goal_threshold: 0.3
+    plot:
+      show_trail: True
+      trail_fill: True
+      trail_alpha: 0.2
+      show_trajectory: False
+      traj_color: 'g'
+      show_goal: True
+
+    sensors: 
+      - type: 'lidar2d'
+        range_min: 0
+        range_max: 10
+        angle_range: 6.283
+        number: 200
+        noise: False
+        std: 1   
+        angle_std: 0.2
+        offset: [0, 0, 0]
+        alpha: 0.3
+
+# obstacle:
+  # - shape: {name: 'circle', radius: 1.0}  # radius
+  #   state: [5, 15, 0]  
+
+  # - number: 10
+  #   distribution: {name: 'manual'}
+  #   shape:
+  #     - {name: 'polygon', random_shape: true, center_range: [5, 10, 40, 30], avg_radius_range: [0.5, 2]}  # radius
+
+  # - number: 10
+  #   distribution: {name: 'random', range_low: [10, 10, -3.14], range_high: [40, 40, 3.14]}
+  #   shape:
+  #     - {name: 'circle', radius: 0.4}  # radius
+  
+  
+  
