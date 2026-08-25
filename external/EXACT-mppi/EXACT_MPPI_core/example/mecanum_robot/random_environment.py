@@ -218,7 +218,17 @@ class RandomEnvironment:
         pose: np.ndarray,
         robot_length: float,
         robot_width: float,
+        corner_radius: float = 0.0,
     ) -> bool:
+        """Check robot collision using a conservative outer rectangular envelope.
+
+        The rounded footprint is used by MPPI and visualization.  For ground-truth
+        validation, the enclosing rectangle is intentionally conservative so that
+        corner arcs cannot graze an obstacle due to polygon discretization.
+        ``corner_radius`` is accepted to keep the interface consistent with the
+        rounded robot model.
+        """
+        del corner_radius
         robot = RectangleObstacle(
             center=np.asarray(pose[:2], dtype=float),
             length=robot_length,

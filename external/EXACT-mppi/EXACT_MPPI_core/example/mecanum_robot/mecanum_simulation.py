@@ -140,15 +140,13 @@ def build_controller(
         TrajectoryValidator=mppi_config["trajectory_validator"],
     )
 
-    half_length = float(robot_config["length"]) / 2.0
-    half_width = float(robot_config["width"]) / 2.0
-    controller.setRectangleFootprint(
-        [[
-            [-half_length, -half_width],
-            [half_length, -half_width],
-            [half_length, half_width],
-            [-half_length, half_width],
-        ]]
+    controller.setPolygonFootprint(
+        [
+            rounded_square_vertices(
+                size=float(robot_config["length"]),
+                corner_radius=float(robot_config["corner_radius"]),
+            )
+        ]
     )
     weights = MecanumCostWeights(
         goal=float(cost_config["goal"]),
@@ -175,6 +173,7 @@ class LiveVisualizer:
         goal_pose: np.ndarray,
         robot_length: float,
         robot_width: float,
+        robot_corner_radius: float,
         animation_interval: float,
         draw_every_n_steps: int,
     ) -> None:
@@ -196,6 +195,7 @@ class LiveVisualizer:
         self.draw_every_n_steps = draw_every_n_steps
         self.robot_length = robot_length
         self.robot_width = robot_width
+        self.robot_corner_radius = robot_corner_radius
         self.closed = False
 
         plt.ion()
@@ -238,7 +238,9 @@ class LiveVisualizer:
             [], [], s=14, color="tab:red", label="current local scan", zorder=4
         )
         self.robot_patch = Polygon(
-            footprint_vertices(start_pose, robot_length, robot_width),
+            footprint_vertices(
+                start_pose, robot_length, robot_width, robot_corner_radius
+            ),
             closed=True,
             facecolor="tab:blue",
             edgecolor="navy",
@@ -303,7 +305,12 @@ class LiveVisualizer:
         trajectory = np.asarray(states)
         self.trajectory_line.set_data(trajectory[:, 0], trajectory[:, 1])
         self.robot_patch.set_xy(
-            footprint_vertices(pose, self.robot_length, self.robot_width)
+            footprint_vertices(
+                pose,
+                self.robot_length,
+                self.robot_width,
+                self.robot_corner_radius,
+            )
         )
         heading_end = pose[:2] + 0.28 * np.array(
             [np.cos(pose[2]), np.sin(pose[2])]
@@ -350,6 +357,7 @@ def run_simulation(
     dt = float(simulation_config["dt"])
     robot_length = float(robot_config["length"])
     robot_width = float(robot_config["width"])
+    robot_corner_radius = float(robot_config["corner_radius"])
     limits = MecanumVelocityLimits(
         vx_max=float(velocity_config["vx_max"]),
         vy_max=float(velocity_config["vy_max"]),
@@ -369,11 +377,14 @@ def run_simulation(
             goal_pose=goal,
             robot_length=robot_length,
             robot_width=robot_width,
+            robot_corner_radius=robot_corner_radius,
             animation_interval=float(visualization_config["animation_interval"]),
             draw_every_n_steps=int(visualization_config["draw_every_n_steps"]),
         )
 
-    if environment.robot_in_collision(state, robot_length, robot_width):
+    if environment.robot_in_collision(
+        state, robot_length, robot_width, robot_corner_radius
+    ):
         raise RuntimeError("Generated environment places the robot in collision at start.")
 
     current_control = np.zeros(3, dtype=np.float32)
@@ -407,16 +418,14 @@ def run_simulation(
         clearances.append(_scan_clearance(scan, states[-2], robot_length, robot_width))
         perception_counts.append(len(scan.points))
 
-        if environment.robot_in_collision(state, robot_length, robot_width):
+        if environment.robot_in_collision(
+            state, robot_length, robot_width, robot_corner_radius
+        ):
             status = "collision"
             break
 
         position_error = float(np.linalg.norm(state[:2] - goal[:2]))
-        heading_error = abs(angle_error(goal[2], state[2]))
-        if (
-            position_error < float(simulation_config["position_tolerance"])
-            and heading_error < float(simulation_config["heading_tolerance"])
-        ):
+        if position_error < float(simulation_config["position_tolerance"]):
             status = "goal_reached"
             break
 
@@ -519,11 +528,48 @@ def save_trajectory(
             )
 
 
-def footprint_vertices(pose: np.ndarray, length: float, width: float) -> np.ndarray:
-    obstacle = RectangleObstacle(
-        center=np.asarray(pose[:2]), length=length, width=width, yaw=float(pose[2])
-    )
-    return rectangle_vertices(obstacle)
+def rounded_square_vertices(
+    size: float = 0.5,
+    corner_radius: float = 0.075,
+) -> list[list[float]]:
+    """Return a counter-clockwise rounded-square footprint in body coordinates."""
+    half = size / 2.0
+    if not 0.0 <= corner_radius < half:
+        raise ValueError("corner_radius must satisfy 0 <= corner_radius < size/2")
+
+    if corner_radius == 0.0:
+        return [[-half, -half], [half, -half], [half, half], [-half, half]]
+
+    points: list[list[float]] = []
+    corner_centers = [
+        (half - corner_radius, -half + corner_radius, -np.pi / 2.0, 0.0),
+        (half - corner_radius, half - corner_radius, 0.0, np.pi / 2.0),
+        (-half + corner_radius, half - corner_radius, np.pi / 2.0, np.pi),
+        (-half + corner_radius, -half + corner_radius, np.pi, 3.0 * np.pi / 2.0),
+    ]
+    for center_x, center_y, start_angle, end_angle in corner_centers:
+        for angle in np.linspace(start_angle, end_angle, 5, endpoint=False):
+            points.append(
+                [
+                    center_x + corner_radius * np.cos(angle),
+                    center_y + corner_radius * np.sin(angle),
+                ]
+            )
+    return points
+
+
+def footprint_vertices(
+    pose: np.ndarray,
+    length: float,
+    width: float,
+    corner_radius: float = 0.075,
+) -> np.ndarray:
+    if not np.isclose(length, width):
+        raise ValueError("The rounded mecanum footprint must be square.")
+    local = np.asarray(rounded_square_vertices(length, corner_radius))
+    cosine, sine = np.cos(pose[2]), np.sin(pose[2])
+    rotation = np.array([[cosine, -sine], [sine, cosine]])
+    return local @ rotation.T + pose[:2]
 
 
 def visualize(
@@ -534,6 +580,7 @@ def visualize(
     goal_pose: np.ndarray,
     robot_length: float,
     robot_width: float,
+    robot_corner_radius: float,
     output_path: Path,
     show: bool,
 ) -> None:
@@ -595,7 +642,9 @@ def visualize(
         pose = states[index]
         axes.add_patch(
             Polygon(
-                footprint_vertices(pose, robot_length, robot_width),
+                footprint_vertices(
+                    pose, robot_length, robot_width, robot_corner_radius
+                ),
                 closed=True,
                 facecolor="tab:blue",
                 edgecolor="tab:blue",
@@ -693,18 +742,25 @@ def main() -> None:
         goal_pose,
         float(config["robot"]["length"]),
         float(config["robot"]["width"]),
+        float(config["robot"]["corner_radius"]),
         figure_file,
         args.show,
     )
 
     final_position_error = np.linalg.norm(result.states[-1, :2] - goal_pose[:2])
-    final_heading_error = abs(angle_error(goal_pose[2], result.states[-1, 2]))
+    final_heading = float(result.states[-1, 2])
     finite_clearances = result.clearances[np.isfinite(result.clearances)]
     minimum_clearance = float(np.min(finite_clearances)) if finite_clearances.size else np.inf
+    max_abs_wz = float(np.max(np.abs(result.controls[:, 2]))) if result.controls.size else 0.0
+    integrated_yaw_change = float(
+        np.sum(result.controls[:, 2]) * float(config["simulation"]["dt"])
+    ) if result.controls.size else 0.0
     print(f"Simulation finished: {result.status} after {len(result.states) - 1} control steps")
     print(f"Random obstacles: {len(environment.obstacles)} (seed={config['environment']['seed']})")
     print(f"Final position error: {final_position_error:.3f} m")
-    print(f"Final heading error: {final_heading_error:.3f} rad")
+    print(f"Final heading (informational): {final_heading:.3f} rad")
+    print(f"Maximum |wz| command: {max_abs_wz:.3f} rad/s")
+    print(f"Integrated yaw change: {integrated_yaw_change:.3f} rad")
     print(f"Minimum locally observed clearance: {minimum_clearance:.3f} m")
     print(f"Trajectory saved to: {trajectory_file.resolve()}")
     print(f"Visualization saved to: {figure_file.resolve()}")

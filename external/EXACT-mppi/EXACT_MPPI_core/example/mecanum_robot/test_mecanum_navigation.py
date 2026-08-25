@@ -30,7 +30,7 @@ class RandomEnvironmentTests(unittest.TestCase):
             start_pose=self.start,
             goal_pose=self.goal,
             robot_length=0.5,
-            robot_width=0.4,
+            robot_width=0.5,
             clearance=0.35,
             circle_probability=0.5,
             radius_range=(0.3, 0.6),
@@ -52,12 +52,12 @@ class RandomEnvironmentTests(unittest.TestCase):
             first.has_free_path(
                 self.start[:2],
                 self.goal[:2],
-                inflation_radius=0.5 * np.hypot(0.5, 0.4) + 0.35,
+                inflation_radius=0.5 * np.hypot(0.5, 0.5) + 0.35,
                 resolution=0.2,
             )
         )
-        self.assertFalse(first.robot_in_collision(self.start, 0.5, 0.4))
-        self.assertFalse(first.robot_in_collision(self.goal, 0.5, 0.4))
+        self.assertFalse(first.robot_in_collision(self.start, 0.5, 0.5))
+        self.assertFalse(first.robot_in_collision(self.goal, 0.5, 0.5))
 
     def test_circle_and_rectangle_collisions(self) -> None:
         environment = RandomEnvironment(
@@ -68,13 +68,13 @@ class RandomEnvironmentTests(unittest.TestCase):
             ],
         )
         self.assertTrue(
-            environment.robot_in_collision(np.array([1.0, 0.0, 0.0]), 0.5, 0.4)
+            environment.robot_in_collision(np.array([1.0, 0.0, 0.0]), 0.5, 0.5)
         )
         self.assertTrue(
-            environment.robot_in_collision(np.array([-1.0, 0.0, 0.0]), 0.5, 0.4)
+            environment.robot_in_collision(np.array([-1.0, 0.0, 0.0]), 0.5, 0.5)
         )
         self.assertFalse(
-            environment.robot_in_collision(np.array([0.0, 2.0, 0.0]), 0.5, 0.4)
+            environment.robot_in_collision(np.array([0.0, 2.0, 0.0]), 0.5, 0.5)
         )
 
 
@@ -117,6 +117,11 @@ class LocalSensorTests(unittest.TestCase):
 
 
 class MecanumModelTests(unittest.TestCase):
+    def test_pure_angular_velocity_changes_heading(self) -> None:
+        model = MecanumModel(0.1)
+        next_state = model.state_transition([0.0, 0.0, 0.0], [0.0, 0.0, 1.0])
+        np.testing.assert_allclose(next_state, [0.0, 0.0, 0.1], atol=1e-7)
+
     def test_velocity_constraints_are_applied_during_transition(self) -> None:
         model = MecanumModel(
             0.1, MecanumVelocityLimits(vx_max=1.0, vy_max=0.5, wz_max=1.5)

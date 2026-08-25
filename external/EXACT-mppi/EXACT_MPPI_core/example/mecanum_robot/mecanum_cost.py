@@ -28,8 +28,10 @@ class MecanumCostWeights:
 class MecanumCostManager:
     """Cost interface consumed by ``Optimizer`` without changing MPPI core code.
 
-    The terminal pose supplies goal and heading errors. Control and smoothness
-    terms are accumulated over the complete sampled horizon.
+    The terminal pose supplies the planar goal error. Heading remains in the
+    state for kinematics and visualization, while its cost can be disabled for
+    position-only navigation. Control and smoothness terms are accumulated over
+    the complete sampled horizon.
     """
 
     def __init__(
