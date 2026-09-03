@@ -530,7 +530,7 @@ def save_trajectory(
 
 def rounded_square_vertices(
     size: float = 0.5,
-    corner_radius: float = 0.075,
+    corner_radius: float = 0.1,
 ) -> list[list[float]]:
     """Return a counter-clockwise rounded-square footprint in body coordinates."""
     half = size / 2.0
@@ -562,7 +562,7 @@ def footprint_vertices(
     pose: np.ndarray,
     length: float,
     width: float,
-    corner_radius: float = 0.075,
+    corner_radius: float = 0.1,
 ) -> np.ndarray:
     if not np.isclose(length, width):
         raise ValueError("The rounded mecanum footprint must be square.")

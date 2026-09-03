@@ -10,7 +10,7 @@ robot:
   goal_pose: [3.2, 2.5, 0.0]
   length: 0.5
   width: 0.5
-  corner_radius: 0.01
+  corner_radius: 0.1
   velocity_limits:
     vx_max: 1.0
     vy_max: 1.0
